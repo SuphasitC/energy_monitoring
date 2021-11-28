@@ -181,25 +181,73 @@ app.get('/', (req, res) => {
     res.send('Energy Monitoring - API')
 });
 
-app.get('/power/apis_avg_per_hr/', async (req, res) => {
+app.get('/power/apis_avg_per_hr/', (req, res) => {
     var acceptableDateType = ['today', 'yesterday'];
     var date = req.query.date;
-    if(acceptableDateType.includes(date)) {
-        MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-            function(err, db) {
-                if (err) throw err;
-                var dbo = db.db('power-api');
-                dbo.collection('MDB1').find({}).toArray((err, value) => {
-                    if (err) throw err;
-                    res.send(value);
-                });
-            }
-        );
-    } else {
-        res.status(400).send(`Non-acceptable date type.`);
+    var todayData = [];
+    var yesterdayData = [];
+    for(i = 0; i < 24; i++) {
+        todayData.push({apis: ((Math.random() * 40) + 60), hour: i});
+        yesterdayData.push({apis: ((Math.random() * 40) + 60), hour: i});
     }
-    
+    if(date === 'today') {
+        res.send(todayData);
+    } else {
+        res.send(yesterdayData);
+    }
 });
+
+// app.get('/power/apis_avg_per_hr/', async (req, res) => {
+//     var acceptableDateType = ['today', 'yesterday'];
+//     var date = req.query.date;
+//     if(acceptableDateType.includes(date)) {
+//         MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+//             function(err, db) {
+//                 if (err) throw err;
+//                 var dbo = db.db('power-api');
+//                 dbo.collection('MDB1').find({}).toArray((err, value) => {
+//                     if (err) throw err;
+//                     res.send(value);
+//                 });
+//             }
+//         );
+//     } else {
+//         res.status(400).send(`Non-acceptable date type.`);
+//     }
+// });
+
+app.get('/apis/all', (req, res) => {
+    var daysPerPageQueryString = req.query.records_per_page;
+    var daysPerPage = parseInt(daysPerPageQueryString);
+    var apis = []
+    for(i = 0; i < daysPerPage; i++) {
+        var date = new Date();
+        date.setDate(date.getDate() - i);
+        var recordDate = date.toISOString();
+        recordDate = recordDate.substring(0, 10);
+        systemDevices.forEach((device) => {
+            apis.push({device: device, informationAt: recordDate, apis: ((Math.random() * 150) + 50)});
+        });
+    }
+    res.send(apis);
+});
+
+app.get('/all_energy/', (req, res) => {
+    var daysPerPageQueryString = req.query.records_per_page;
+    var daysPerPage = parseInt(daysPerPageQueryString);
+    var allEnergy = []
+    for(i = 0; i < daysPerPage; i++) {
+        var date = new Date();
+        date.setDate(date.getDate() - i);
+        var recordDate = date.toISOString();
+        recordDate = recordDate.substring(0, 10);
+        systemDevices.forEach((device) => {
+            allEnergy.push({device: device, informationAt: recordDate, allEnergy: ((Math.random() * 150) + 50)});
+        });
+    }
+    res.send(allEnergy);
+});
+
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ API Server set up ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
@@ -243,4 +291,71 @@ app.listen(port, () => {
     setIsRealDevices(false);
     getSystemDevices();
     console.log(`Energy Monitoring API is listening on port ${port}.`);
+});
+
+/* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Web Socket ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
+
+ws.on('connection', (ws) => {
+    
+    ws.onmessage = (event) => {
+        console.log(event.data)
+        console.log(typeof event.data)
+        switch (event.data) {
+            case 'event/alarm': alarmEvent(); break;
+            case 'event/handled_alarm': handledAlarmEvents(); break;
+            case 'cost/today': todayCost(); break;
+            case 'saved_cost/today': todaySavedCostAsBaht(); break;
+            case 'all_energy/today': allEnergyToday(); break;
+            case 'devices-status=online': onlineDevices(); break;
+            case 'devices-status=offline': offlineDevices(); break;
+            case 'devices-status=non-init': nonInitializedDevices(); break;
+        }
+    }
+
+    var alarmEvent = () => {
+        var todayAlarmEvents = 64;
+        ws.send(todayAlarmEvents);
+    };
+
+    var handledAlarmEvents = () => {
+        var handledAlarmEvents = 87;
+        ws.send(handledAlarmEvents);
+    };
+
+    var todayCost = () => {
+        var todayCostAsBaht = 68700;
+        ws.send(todayCostAsBaht);
+    };
+
+    var todaySavedCostAsBaht = () => {
+        var todaySavedCostAsBaht = 42800; // minus if not save
+        ws.send(todaySavedCostAsBaht);
+    };
+
+    var allEnergyToday = () => {
+        var allEnergyToday = 100081;
+        ws.send(allEnergyToday);
+    };
+
+    var onlineDevices = () => {
+        var onlineDevices = 540;
+        ws.send(onlineDevices);
+    };
+
+    var offlineDevices = () => {
+        var offlineDevices = 325;
+        ws.send(offlineDevices);
+    };
+
+    var nonInitializedDevices = () => {
+        var nonInitializedDevices = 702;
+        ws.send(nonInitializedDevices);
+    };
+
+    ws.on('close', () => {
+        console.log('Disconnected from client web socket.');
+    });
+
+
+    ws.send('Connect to Energy-Monitoring WebSocket');
 });
