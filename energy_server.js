@@ -8,12 +8,12 @@ const webSocketPort = 4001;
 const ws = new WebSocket.Server({ port: webSocketPort });
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: '*' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json())
 
-// const mongoUrl = 'mongodb://127.0.0.1:27017';
-const mongoUrl = 'mongodb://cocoad:CocoaD12345@43.229.134.139:27017/energy-monitoring?authSource=admin';
+const mongoUrl = 'mongodb://127.0.0.1:27017';
+// const mongoUrl = 'mongodb://cocoad:CocoaD12345@43.229.134.139:27018/energy-monitoring?authSource=admin';
 const port = 8000;
 
 const powerPort = 8080;
@@ -31,30 +31,33 @@ const DEVICE_OFFLINE = 34;
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Database Methods ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
 var insertObjToDatabase = (obj) => {
-    //insert for split solar and meter
-    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-        function (err, db) {
-            if (err) throw err;
-            var dbo = db.db(databaseName);
-            var collectionName = getCollectionName(obj.deviceName);
-            dbo.collection(collectionName).insertOne(obj, function (err, res) {
+    // Insert for split solar and meter
+    if (obj.deviceName !== null) {
+        MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+            function (err, db) {
                 if (err) throw err;
-            });
-        }
-    );
-
-    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-        function (err, db) {
-            if (err) throw err;
-            var dbo = db.db(databaseName);
-            dbo.collection('all').insertOne(obj, function (err, res) {
+                var dbo = db.db(databaseName);
+                var collectionName = getCollectionName(obj.deviceName);
+                dbo.collection(collectionName).insertOne(obj, function (err, res) {
+                    if (err) throw err;
+                });
+            }
+        );
+    // Insert for all
+        MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+            function (err, db) {
                 if (err) throw err;
-            });
-        }
-    );
+                var dbo = db.db(databaseName);
+                dbo.collection('all').insertOne(obj, function (err, res) {
+                    if (err) throw err;
+                });
+            }
+        );
+    }
 }
 
 var getCollectionName = (deviceName) => {
+    if (deviceName === null) return '';
     if (deviceName.startsWith("MDB") || deviceName.startsWith("B")) {
         return 'meter';
     } else if (deviceName.startsWith("Solar")) {
@@ -66,7 +69,7 @@ var getCollectionName = (deviceName) => {
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Backend flow methods ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
-var insertMockedUpData = async () => {
+var insertData = async () => {
     try {
         var responseList = [];
         for (var i = 0; i < systemDevices.length; i++) {
@@ -81,36 +84,69 @@ var insertMockedUpData = async () => {
     }
 }
 
-var cleansingData = (json) => {
-    var deviceName = json.values.variable[8].textValue[0];
-    var ae = parseFloat(json.values.variable[0].value[0]);
-    var ai1 = parseFloat(json.values.variable[1].value[0]);
-    var ai2 = parseFloat(json.values.variable[2].value[0]);
-    var ai3 = parseFloat(json.values.variable[3].value[0]);
-    var apis = parseFloat(json.values.variable[4].value[0]);
-    var appis = parseFloat(json.values.variable[5].value[0]);
-    var fre = parseFloat(json.values.variable[7].value[0]);
-    var pfis = parseFloat(json.values.variable[9].value[0]);
-    var rpis = parseFloat(json.values.variable[10].value[0]);
-    var status = parseFloat(json.values.variable[11].value[0]);
-    var vdttm = parseFloat(json.values.variable[12].value[0]);
-    var vi1 = parseFloat(json.values.variable[13].value[0]);
-    var vi12 = parseFloat(json.values.variable[14].value[0]);
-    var vi2 = parseFloat(json.values.variable[15].value[0]);
-    var vi23 = parseFloat(json.values.variable[16].value[0]);
-    var vi3 = parseFloat(json.values.variable[17].value[0]);
-    var vi31 = parseFloat(json.values.variable[18].value[0]);
+var cleansingData = (json, device) => {
+    // console.log(JSON.stringify(json));
+    var deviceName = json.values.variable.find((element) => element.id[0] == `${device}.NAME`) !== undefined ?
+        json.values.variable.find((element) => element.id[0] == `${device}.NAME`).textValue[0] : null;
+    var ae = json.values.variable.find((element) => element.id[0] == `${device}.AE`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AE`).value[0]) : null;
+    var ai1 = json.values.variable.find((element) => element.id[0] == `${device}.AI1`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AI1`).value[0]) : null;
+    var ai2 = json.values.variable.find((element) => element.id[0] == `${device}.AI2`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AI2`).value[0]) : null;
+    var ai3 = json.values.variable.find((element) => element.id[0] == `${device}.AI3`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AI3`).value[0]) : null;
+    var ain = json.values.variable.find((element) => element.id[0] == `${device}.AIN`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AIN`).value[0]) : null;
+    var apis = json.values.variable.find((element) => element.id[0] == `${device}.APIS`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.APIS`).value[0]) : null;
+    var appis = json.values.variable.find((element) => element.id[0] == `${device}.APPIS`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.APPIS`).value[0]) : null;
+    var fre = json.values.variable.find((element) => element.id[0] == `${device}.FRE`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.FRE`).value[0]) : null;
+    var pfis = json.values.variable.find((element) => element.id[0] == `${device}.PFIS`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.PFIS`).value[0]) : null;
+    var rpis = json.values.variable.find((element) => element.id[0] == `${device}.RPIS`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.RPIS`).value[0]) : null;
+    var status = json.values.variable.find((element) => element.id[0] == `${device}.STATUS`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]) : null;
+    var thdi1 = json.values.variable.find((element) => element.id[0] == `${device}.THDI1`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI1`).value[0]) : null;
+    var thdi2 = json.values.variable.find((element) => element.id[0] == `${device}.THDI2`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI2`).value[0]) : null;
+    var thdi3 = json.values.variable.find((element) => element.id[0] == `${device}.THDI3`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI3`).value[0]) : null;
+    var thdv1 = json.values.variable.find((element) => element.id[0] == `${device}.THDV1`).value[0];
+    parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV1`).value[0])
+    var thdv2 = json.values.variable.find((element) => element.id[0] == `${device}.THDV2`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV2`).value[0]) : null;
+    var thdv3 = json.values.variable.find((element) => element.id[0] == `${device}.THDV3`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV3`).value[0]) : null;
+    var vi1 = json.values.variable.find((element) => element.id[0] == `${device}.VI1`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI1`).value[0]) : null;
+    var vi12 = json.values.variable.find((element) => element.id[0] == `${device}.VI12`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI12`).value[0]) : null;
+    var vi2 = json.values.variable.find((element) => element.id[0] == `${device}.VI2`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI2`).value[0]) : null;
+    var vi23 = json.values.variable.find((element) => element.id[0] == `${device}.VI23`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI23`).value[0]) : null;
+    var vi3 = json.values.variable.find((element) => element.id[0] == `${device}.VI3`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI3`).value[0]) : null;
+    var vi31 = json.values.variable.find((element) => element.id[0] == `${device}.VI31`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI31`).value[0]) : null;
+
     var cleanData = {
         deviceName: deviceName, ae: ae, ai1: ai1, ai2: ai2,
-        ai3: ai3, apis: apis, appis: appis, fre: fre, pfis: pfis,
-        rpis: rpis, status: status, vdttm: vdttm, vi1: vi1, vi12: vi12,
+        ai3: ai3, ain: ain, apis: apis, appis: appis, fre: fre, pfis: pfis,
+        rpis: rpis, status: status, thdi1: thdi1, thdi2: thdi2, thdi3: thdi3,
+        thdv1: thdv1, thdv2: thdv2, thdv3: thdv3, vi1: vi1, vi12: vi12,
         vi2: vi2, vi23: vi23, vi3: vi3, vi31: vi31
     };
     return cleanData;
 }
 
 setInterval(() => {
-    insertMockedUpData();
+    insertData();
 }, 60000);
 
 app.post('/devices/:deviceId', cors(), async (req, res) => {
@@ -135,7 +171,35 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
                                             <value>${Math.random() * 100 + 30}</value>
                                         </variable>
                                         <variable>
+                                            <id>${deviceId}.AIN</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.API1</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.API2</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.API3</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
                                             <id>${deviceId}.APIS</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.APPI1</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.APPI2</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.APPI3</id>
                                             <value>${Math.random() * 100 + 30}</value>
                                         </variable>
                                         <variable>
@@ -154,8 +218,36 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
                                             <textValue>${deviceId}</textValue>
                                         </variable>
                                         <variable>
+                                            <id>${deviceId}.PFI1</id>
+                                            <value>9998.000000</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.PFI2</id>
+                                            <value>9998.000000</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.PFI2</id>
+                                            <value>9998.000000</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.PFI3</id>
+                                            <value>9998.000000</value>
+                                        </variable>
+                                        <variable>
                                             <id>${deviceId}.PFIS</id>
                                             <value>9998.000000</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.RPI1</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.RPI2</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.RPI3</id>
+                                            <value>${Math.random() * 100 + 30}</value>
                                         </variable>
                                         <variable>
                                             <id>${deviceId}.RPIS</id>
@@ -164,6 +256,46 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
                                         <variable>
                                             <id>${deviceId}.STATUS</id>
                                             <value>${(Math.floor(Math.random()) == 0) ? 1 : 34}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDI1</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDI2</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDI3</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDIN</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDV1</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDV12</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDV2</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDV23</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDV3</id>
+                                            <value>${Math.random() * 100 + 30}</value>
+                                        </variable>
+                                        <variable>
+                                            <id>${deviceId}.THDV31</id>
+                                            <value>${Math.random() * 100 + 30}</value>
                                         </variable>
                                         <variable>
                                             <id>${deviceId}.VDTTM</id>
@@ -201,11 +333,13 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
         }
         const jsonString = JSON.stringify(result, null, 4);
         var json = JSON.parse(jsonString);
-        var cleansingJSON = cleansingData(json)
+        // console.log(JSON.stringify(json))
+        var cleansingJSON = cleansingData(json, deviceId)
 
         const date = new Date().toISOString()
         const createdAt = new Date(date);
         cleansingJSON = { ...cleansingJSON, createdAt };
+        console.log(`🏀🏀🏀🏀🏀 cleansingJSON = ${cleansingJSON !== null ? JSON.stringify(cleansingJSON) : null} 🏀🏀🏀🏀🏀`);
         if (systemDevices.includes(deviceId)) {
             insertObjToDatabase(cleansingJSON);
             res.send(json);
@@ -215,60 +349,15 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
     });
 });
 
-app.get('/alarm', cors(), async (req, res) => {
-    try {
-        var alarmPoint = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                            <values>
-                                <variable>
-                                    <id>CoPro2.DESCRIPTION</id>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.HUM</id>
-                                    <value>42.750000</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.NAME</id>
-                                    <value>CoPro2</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.STATUS</id>
-                                    <value>1.000000</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.Smoke</id>
-                                    <value>0.000000</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.Temp</id>
-                                    <value>26.049999</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.Temp1</id>
-                                    <value>27.325001</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.VDTTM</id>
-                                    <value>05122021053650</value>
-                                </variable>
-                            </values>`:
-            await axios.get(GET_ALARM_POINT);
-        xml2js.parseString(!isRealDevice ? alarmPoint : alarmPoint.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-
-            var humidity = parseFloat(json.values.variable[1].value[0]);
-            var temperature = parseFloat(json.values.variable[5].value[0]);
-            var smokeStatus = parseFloat(json.values.variable[4].value[0]) == 0 ? 'Normal' : 'Alarm';
-            var sentData = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
-            res.send(sentData);
-        });
-    } catch (error) {
-        console.error(error);
+var compareHr = (docA, docB) => {
+    if (docA.hour < docB.hour) {
+        return -1;
     }
-});
+    if (docA.hour > docB.hour) {
+        return 1;
+    }
+    return 0;
+}
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ API Endpoint ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
@@ -276,7 +365,7 @@ app.get('/', (req, res) => {
     res.send('Energy Monitoring - API')
 });
 
-app.get('/power/all/', (req, res) => {
+app.get('/power/apis_per_hr/', (req, res) => {
     var date = req.query.date;
 
     var aggGteDate;
@@ -313,70 +402,6 @@ app.get('/power/all/', (req, res) => {
                 },
                 "power": {
                     "$max": "$apis"
-                }
-            }
-        },
-        {
-            "$project": {
-                _id: 1,
-                power: 1,
-            }
-        },
-        {
-            "$sort": {
-                _id: 1
-            }
-        }
-    ]
-
-    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-        function (err, db) {
-            if (err) throw err;
-            var dbo = db.db(databaseName);
-            dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-                res.send(docs)
-            });
-        }
-    );
-});
-
-app.get('/power/apis_avg_per_hr/', (req, res) => {
-    var date = req.query.date;
-
-    var aggGteDate;
-    var aggLtDate;
-
-    if (date === 'today') {
-        aggGteDate = new Date(today)
-        aggLtDate = new Date(tomorrow)
-    } else if (date === 'yesterday') {
-        aggGteDate = new Date(yesterday)
-        aggLtDate = new Date(today)
-    }
-
-    var aggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: aggGteDate,
-                    $lt: aggLtDate
-                }
-            }
-        },
-        {
-            "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "hour",
-                        binSize: 1
-                    }
-                },
-                "count": {
-                    "$count": {}
-                },
-                "power": {
-                    "$avg": "$apis"
                 },
             }
         },
@@ -406,7 +431,27 @@ app.get('/power/apis_avg_per_hr/', (req, res) => {
             if (err) throw err;
             var dbo = db.db(databaseName);
             dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-                res.send(docs)
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, power: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
             });
         }
     );
@@ -474,7 +519,6 @@ app.get('/energy/all/', (req, res) => {
                 hour: 1
             }
         },
-
     ]
 
     MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
@@ -482,12 +526,33 @@ app.get('/energy/all/', (req, res) => {
             if (err) throw err;
             var dbo = db.db(databaseName);
             dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-                res.send(docs)
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, energy: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
             });
         }
     );
 });
 
+// Don't use in this phase.
 app.get('/controllers_amount/', (req, res) => {
     var previous7day = new Date()
     previous7day.setDate(previous7day.getDate() - 7);
@@ -532,9 +597,7 @@ app.get('/controllers_amount/', (req, res) => {
             if (err) throw err;
             var dbo = db.db(databaseName);
             dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-                console.log(docs);
-
-                docs.forEach( async (day) => {
+                docs.forEach(async (day) => {
                     await day.devicesName.forEach((device) => {
                         if (!offlineDevicesList.includes(device)) {
                             offlineDevicesList.push(device);
@@ -550,13 +613,67 @@ app.get('/controllers_amount/', (req, res) => {
     );
 });
 
+app.get('/alarm', async (req, res) => {
+    try {
+        var alarmPoint = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                            <values>
+                                <variable>
+                                    <id>CoPro2.DESCRIPTION</id>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.HUM</id>
+                                    <value>42.750000</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.NAME</id>
+                                    <value>CoPro2</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.STATUS</id>
+                                    <value>1.000000</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.Smoke</id>
+                                    <value>0.000000</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.Temp</id>
+                                    <value>26.049999</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.Temp1</id>
+                                    <value>27.325001</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.VDTTM</id>
+                                    <value>05122021053650</value>
+                                </variable>
+                            </values>`:
+            await axios.get(GET_ALARM_POINT);
+        xml2js.parseString(!isRealDevice ? alarmPoint : alarmPoint.data, (err, result) => {
+            if (err) {
+                throw err;
+            }
+            const jsonString = JSON.stringify(result, null, 4);
+            var json = JSON.parse(jsonString);
+
+            var humidity = parseFloat(json.values.variable[1].value[0]);
+            var temperature = parseFloat(json.values.variable[5].value[0]);
+            var smokeStatus = parseFloat(json.values.variable[4].value[0]) == 0 ? 'Normal' : 'Alarm';
+            var sentData = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
+            res.send(sentData);
+        });
+    } catch (error) {
+        console.error(error);
+    }
+});
+
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ API Server set up ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
 var systemDevices = [];
 var isRealDevice = false;
 
 var dateObj = new Date();
-// dateObj.setDate((new Date()).getHours() + 7)
 var today = dateObj.toISOString();
 today = today.substring(0, 10);
 
@@ -617,7 +734,6 @@ app.listen(port, () => {
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Web Socket ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
 ws.on('connection', (ws) => {
-
     ws.onmessage = (event) => {
         console.log(event.data)
         console.log(typeof event.data)
@@ -682,7 +798,7 @@ ws.on('connection', (ws) => {
         //         }
         //     }
         // ]
-    
+
         // MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
         //     function (err, db) {
         //         if (err) throw err;
@@ -735,7 +851,7 @@ ws.on('connection', (ws) => {
                 "$limit": 1
             },
         ]
-    
+
         MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
             function (err, db) {
                 if (err) throw err;
@@ -753,15 +869,15 @@ ws.on('connection', (ws) => {
 
     var onlineDevices = () => {
         var onlineDevices = 0;
-        systemDevices.forEach( async (device) => {
+        systemDevices.forEach(async (device) => {
             var dataFromAPI = await axios.get(getVariableValue(device.device.id));
             xml2js.parseString(dataFromAPI.data, (err, result) => {
-                if(err) {
+                if (err) {
                     throw err;
                 }
                 const jsonString = JSON.stringify(result, null, 4);
                 var json = JSON.parse(jsonString);
-                if(parseInt(json.values.variable[24].value[0]) === DEVICE_ONLINE) {
+                if (parseInt(json.values.variable[24].value[0]) === DEVICE_ONLINE) {
                     onlineDevices++;
                 }
             });
@@ -771,15 +887,15 @@ ws.on('connection', (ws) => {
 
     var offlineDevices = () => {
         var offlineDevices = 0;
-        systemDevices.forEach( async (device) => {
+        systemDevices.forEach(async (device) => {
             var dataFromAPI = await axios.get(getVariableValue(device.device.id));
             xml2js.parseString(dataFromAPI.data, (err, result) => {
-                if(err) {
+                if (err) {
                     throw err;
                 }
                 const jsonString = JSON.stringify(result, null, 4);
                 var json = JSON.parse(jsonString);
-                if(parseInt(json.values.variable[24].value[0]) === DEVICE_OFFLINE) {
+                if (parseInt(json.values.variable[24].value[0]) === DEVICE_OFFLINE) {
                     offlineDevices++;
                 }
             });
