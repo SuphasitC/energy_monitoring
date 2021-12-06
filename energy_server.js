@@ -857,7 +857,7 @@ var todayCost = async () => {
     var todayOnPeak = await onPeakToday();
     var todayOffPeak = await offPeakToday();
     var todayCostAsBaht = (todayOnPeak * onPeakCostPerUnit) + (todayOffPeak * offPeakCostPerUnit);
-    return todayCostAsBaht;
+    return { todayCost: todayCostAsBaht };
 };
 
 var todaySavedCostAsBaht = () => {
