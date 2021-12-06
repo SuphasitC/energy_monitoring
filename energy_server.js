@@ -762,7 +762,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('cost/today', (message) => {
-        socket.emit('cost/today', todayCost());
+        setInterval(async () => {
+            socket.emit('cost/today', await todayCost());
+        }, 3000);
     });
 
     socket.on('saved_cost/today', (message) => {
@@ -827,6 +829,12 @@ io.on('connection', (socket) => {
             socket.emit('off_peak/today', await offPeakToday());
         }, 3000);
     });
+
+    socket.on('alarm', async () => {
+        setInterval(async () => {
+            socket.emit('alarm', await getAlarmEvent());
+        }, 3000)
+    });
 });
 
 socketServer.listen(socketIOPort, () => {
@@ -843,51 +851,12 @@ var handledAlarmEvents = () => {
     return handledAlarmEvents;
 };
 
-var todayCost = () => {
-    // var aggregate = [
-    //     {
-    //         "$match": {
-    //             "createdAt": {
-    //                 $gte: new Date(today),
-    //                 $lt: new Date(tomorrow),
-    //             }
-    //         }
-    //     },
-    //     {
-    //         "$group": {
-    //             _id: {
-    //                 $dateTrunc: {
-    //                     date: "$createdAt",
-    //                     unit: "hour",
-    //                     binSize: 1
-    //                 }
-    //             },
-    //             "count": {
-    //                 "$count": {}
-    //             },
-    //             "power": {
-    //                 "$max": "$apis"
-    //             }
-    //         }
-    //     },
-    //     {
-    //         "$project": {
-    //             _id: 1,
-    //             power: 1,
-    //         }
-    //     },
-    // ]
-
-    // MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-    //     function (err, db) {
-    //         if (err) throw err;
-    //         var dbo = db.db(databaseName);
-    //         dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-    //             res.send(docs)
-    //         });
-    //     }
-    // );
-    var todayCostAsBaht = 68700;
+var todayCost = async () => {
+    var onPeakCostPerUnit = 4.1839;
+    var offPeakCostPerUnit = 2.6037;
+    var todayOnPeak = await onPeakToday();
+    var todayOffPeak = await offPeakToday();
+    var todayCostAsBaht = (todayOnPeak * onPeakCostPerUnit) + (todayOffPeak * offPeakCostPerUnit);
     return todayCostAsBaht;
 };
 
@@ -1521,7 +1490,7 @@ var onPeakToday = async () => {
                     sumOfLastAE += deviceAE;
             });
         }
-        var onPeak = sumOfLastAE - sumOfFirstAE;
+        var onPeak = Math.abs(sumOfLastAE - sumOfFirstAE);
         return { onPeak: onPeak };
     } else {
         return { onPeak: 0 };
@@ -1587,9 +1556,69 @@ var offPeakToday = async () => {
                     sumOfLastAE += deviceAE;
             });
         }
-        var offPeak = sumOfLastAE - sumOfFirstAE;
+        var offPeak = Math.abs(sumOfLastAE - sumOfFirstAE);
         return { offPeak: offPeak };
     } else {
         return { offPeak: 0 };
     }
 };
+
+var getAlarmEvent = async () => {
+    var sentData;
+    try {
+        var alarmPoint = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                            <values>
+                                <variable>
+                                    <id>CoPro2.DESCRIPTION</id>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.HUM</id>
+                                    <value>42.750000</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.NAME</id>
+                                    <value>CoPro2</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.STATUS</id>
+                                    <value>1.000000</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.Smoke</id>
+                                    <value>0.000000</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.Temp</id>
+                                    <value>26.049999</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.Temp1</id>
+                                    <value>27.325001</value>
+                                </variable>
+                                <variable>
+                                    <id>CoPro2.VDTTM</id>
+                                    <value>05122021053650</value>
+                                </variable>
+                            </values>`:
+            await axios.get(GET_ALARM_POINT);
+        xml2js.parseString(!isRealDevice ? alarmPoint : alarmPoint.data, (err, result) => {
+            if (err) {
+                throw err;
+            }
+            const jsonString = JSON.stringify(result, null, 4);
+            var json = JSON.parse(jsonString);
+
+            var humidity = json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`) !== undefined ?
+                parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`).value[0]) : 0;
+            var temperature = json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`) !== undefined ?
+                parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`).value[0]) : 0;
+            var smokeStatus = json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`) !== undefined ?
+                parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`).value[0]) === 0 ? 'Normal' : 'Alarm' : 'Normal';
+            // console.log({ humidity: humidity, temperature: temperature, smokeStatus: smokeStatus });
+            sentData = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
+        });
+    } catch (error) {
+        console.error(error);
+    }
+    return sentData;
+}
