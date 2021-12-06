@@ -797,6 +797,18 @@ io.on('connection', (socket) => {
         }, 3000);
     });
 
+    socket.on('pea_devices/all_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('pea_devices/all_energy/today', await eachDevicesEnergyToday());
+        }, 3000);
+    });
+
+    socket.on('solar/all_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('solar/all_energy/today', await eachSolarEnergyToday());
+        });
+    });
+
     // work
     socket.on('solar/today', (message) => {
         setInterval(async () => {
@@ -807,6 +819,12 @@ io.on('connection', (socket) => {
     socket.on('on_peak/today', (message) => {
         setInterval(async () => {
             socket.emit('on_peak/today', await onPeakToday());
+        }, 3000);
+    });
+
+    socket.on('off_peak/today', (message) => {
+        setInterval(async () => {
+            socket.emit('off_peak/today', await offPeakToday());
         }, 3000);
     });
 });
@@ -960,6 +978,60 @@ var peaEnergyToday = async () => {
     const collection = db.collection('meter');
     const result = await collection.aggregate(aggregate).toArray();
     return result[0];
+};
+
+var eachDevicesEnergyToday = async () => {
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": {
+                    "$sum": "$ae"
+                }
+            }
+        },
+    ]
+
+    const client = await MongoClient.connect(mongoUrl);
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const result = await collection.aggregate(aggregate).toArray();
+    return result;
+};
+
+var eachSolarEnergyToday = async () => {
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": {
+                    "$sum": "$ae"
+                }
+            }
+        },
+    ]
+
+    const client = await MongoClient.connect(mongoUrl);
+    var db = client.db(databaseName);
+    const collection = db.collection('solar');
+    const result = await collection.aggregate(aggregate).toArray();
+    return result;
 };
 
 var solarEnergyToday = async () => {
@@ -1397,9 +1469,13 @@ var offlineDevices = () => {
 
 var onPeakToday = async () => {
     var onPeakStartTime = new Date(today);
-    onPeakStartTime.setHours(onPeakStartTime.getHours() + 9);
+    onPeakStartTime.setHours(onPeakStartTime.getHours() + 2);
     var onPeakEndTime = new Date(today);
-    onPeakEndTime.setHours(onPeakEndTime.getHours() + 22);
+    onPeakEndTime.setHours(onPeakEndTime.getHours() + 15);
+    console.log(`onPeakStartTime = ${onPeakStartTime}`);
+    console.log(`onPeakStartTime ISOString = ${onPeakStartTime.toISOString()}`);
+    console.log(`onPeakEndTime = ${onPeakEndTime}`);
+    console.log(`onPeakEndTime ISOString = ${onPeakEndTime.toISOString()}`);
     var aggregate = [
         {
             "$match": {
@@ -1415,7 +1491,7 @@ var onPeakToday = async () => {
                     $dateTrunc: {
                         date: "$createdAt",
                         unit: "day",
-                        binSize: 1
+                        binSize: 1,
                     }
                 },
                 "allAE": {
@@ -1448,6 +1524,72 @@ var onPeakToday = async () => {
         var onPeak = sumOfLastAE - sumOfFirstAE;
         return { onPeak: onPeak };
     } else {
-        return { onPeak: 0};
+        return { onPeak: 0 };
+    }
+};
+
+var offPeakToday = async () => {
+    var offPeakStartTime = new Date(today);
+    var offPeakEndTime = new Date();
+    if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
+        offPeakStartTime.setHours(offPeakStartTime.getHours() + 15);
+        offPeakEndTime = new Date();
+    } else {
+        offPeakStartTime = new Date(today);
+        offPeakEndTime = new Date(tomorrow);
+    }
+    console.log(`offPeakStartTime = ${offPeakStartTime}`);
+    console.log(`offPeakStartTime ISOString = ${offPeakStartTime.toISOString()}`);
+    console.log(`offPeakEndTime = ${offPeakEndTime}`);
+    console.log(`offPeakEndTime ISOString = ${offPeakEndTime.toISOString()}`);
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: offPeakStartTime,
+                    $lt: offPeakEndTime,
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "allAE": {
+                    $addToSet: "$ae"
+                },
+            }
+        },
+    ]
+
+    if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
+        const client = await MongoClient.connect(mongoUrl);
+        var db = client.db(databaseName);
+        const collection = db.collection('all');
+        const result = await collection.aggregate(aggregate).toArray();
+        console.log(result);
+        var sumOfFirstAE = 0;
+        var sumOfLastAE = 0;
+        if (result.length !== 0) {
+            var eachDeviceFirstAE = !isRealDevice ? result[0].allAE.slice(0, systemDevices.length) : result[0].allAE.slice(0, systemDevices.length - 1);
+            eachDeviceFirstAE.forEach((deviceAE) => {
+                if (deviceAE !== null)
+                    sumOfFirstAE += deviceAE;
+            });
+            var eachDeviceLastAE = !isRealDevice ? result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length) : result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length - 1);
+            eachDeviceLastAE.forEach((deviceAE) => {
+                if (deviceAE !== null)
+                    sumOfLastAE += deviceAE;
+            });
+        }
+        var offPeak = sumOfLastAE - sumOfFirstAE;
+        return { offPeak: offPeak };
+    } else {
+        return { offPeak: 0 };
     }
 };
