@@ -3,21 +3,31 @@ const MongoClient = require('mongodb').MongoClient;
 const xml2js = require('xml2js');
 var cors = require('cors')
 const axios = require('axios');
-const WebSocket = require('ws');
-const webSocketPort = 4001;
-const ws = new WebSocket.Server({ port: webSocketPort });
+// const WebSocket = require('ws');
+// const webSocketPort = 4001;
+// const ws = new WebSocket.Server({ port: webSocketPort });
 
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json())
 
-const mongoUrl = 'mongodb://127.0.0.1:27017';
-// const mongoUrl = 'mongodb://cocoad:CocoaD12345@43.229.134.139:27018/energy-monitoring?authSource=admin';
+const socketServer = require('http').Server(app);
+const io = require("socket.io")(socketServer, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
+// const mongoUrl = 'mongodb://127.0.0.1:27017';
+const mongoUrl = 'mongodb://cocoad:CocoaD12345@43.229.134.139:27018/energy-monitoring?authSource=admin';
 const port = 8000;
 
 const powerPort = 8080;
 const powerUrl = 'http://127.0.0.1:' + powerPort;
+
+const socketIOPort = 4000;
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ URL about information from Power Studio Constant ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
@@ -43,7 +53,7 @@ var insertObjToDatabase = (obj) => {
                 });
             }
         );
-    // Insert for all
+        // Insert for all
         MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
             function (err, db) {
                 if (err) throw err;
@@ -340,7 +350,7 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
         const createdAt = new Date(date);
         cleansingJSON = { ...cleansingJSON, createdAt };
         console.log(`🏀🏀🏀🏀🏀 cleansingJSON = ${cleansingJSON !== null ? JSON.stringify(cleansingJSON) : null} 🏀🏀🏀🏀🏀`);
-        if (systemDevices.includes(deviceId)) {
+        if (systemDevices.includes(deviceId) && (deviceId != 'CoPro1' || deviceId != 'CoPro2')) {
             insertObjToDatabase(cleansingJSON);
             res.send(json);
         } else {
@@ -585,7 +595,7 @@ app.get('/controllers_amount/', (req, res) => {
                         }
                     },
                     "devicesName": {
-                        "$push": "$deviceName"
+                        "$addToSet": "$deviceName"
                     }
                 }
             },
@@ -690,6 +700,15 @@ yesterday = yesterday.substring(0, 10);
 var databaseName = 'energy-monitoring';
 var allDevicesCollection = 'all';
 
+const SUNDAY = 0;
+const MONDAY = 1;
+const TUESDAY = 2;
+const WEDNESDAY = 3;
+const THURSDAY = 4;
+const FRIDAY = 5;
+const SATURDAY = 6;
+
+
 var setIsRealDevices = (isReal) => {
     isRealDevice = isReal;
 }
@@ -733,185 +752,702 @@ app.listen(port, () => {
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Web Socket ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
-ws.on('connection', (ws) => {
-    ws.onmessage = (event) => {
-        console.log(event.data)
-        console.log(typeof event.data)
-        switch (event.data) {
-            case 'event/alarm': alarmEvent(); break;
-            case 'event/handled_alarm': handledAlarmEvents(); break;
-            case 'cost/today': todayCost(); break;
-            case 'saved_cost/today': todaySavedCostAsBaht(); break;
-            case 'all_energy/today': allEnergyToday(); break;
-            case 'devices-status=online': onlineDevices(); break;
-            case 'devices-status=offline': offlineDevices(); break;
-            case 'devices-status=non-init': nonInitializedDevices(); break;
-        }
-    }
-
-    var alarmEvent = () => {
-        var todayAlarmEvents = 64;
-        ws.send(todayAlarmEvents);
-    };
-
-    var handledAlarmEvents = () => {
-        var handledAlarmEvents = 87;
-        ws.send(handledAlarmEvents);
-    };
-
-    var todayCost = () => {
-        // var aggregate = [
-        //     {
-        //         "$match": {
-        //             "createdAt": {
-        //                 $gte: aggGteDate,
-        //                 $lt: aggLtDate
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "$group": {
-        //             _id: {
-        //                 $dateTrunc: {
-        //                     date: "$createdAt",
-        //                     unit: "hour",
-        //                     binSize: 1
-        //                 }
-        //             },
-        //             "count": {
-        //                 "$count": {}
-        //             },
-        //             "power": {
-        //                 "$max": "$apis"
-        //             }
-        //         }
-        //     },
-        //     {
-        //         "$project": {
-        //             _id: 1,
-        //             power: 1,
-        //         }
-        //     },
-        //     {
-        //         "$sort": {
-        //             _id: 1
-        //         }
-        //     }
-        // ]
-
-        // MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-        //     function (err, db) {
-        //         if (err) throw err;
-        //         var dbo = db.db(databaseName);
-        //         dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-        //             res.send(docs)
-        //         });
-        //     }
-        // );
-        var todayCostAsBaht = 68700;
-        ws.send(todayCostAsBaht);
-    };
-
-    var todaySavedCostAsBaht = () => {
-        var todaySavedCostAsBaht = 42800; // minus if not save
-        ws.send(todaySavedCostAsBaht);
-    };
-
-    var allEnergyToday = () => {
-        var aggregate = [
-            {
-                "$match": {
-                    "createdAt": {
-                        $gte: new Date(today),
-                        $lt: new Date(tomorrow),
-                    }
-                }
-            },
-            {
-                "$group": {
-                    _id: {
-                        $dateTrunc: {
-                            date: "$createdAt",
-                            unit: "day",
-                            binSize: 1
-                        }
-                    },
-                    "energy": {
-                        "$sum": "$ae"
-                    }
-                }
-            },
-            {
-                "$project": {
-                    _id: 0,
-                    energy: 1,
-                }
-            },
-            {
-                "$limit": 1
-            },
-        ]
-
-        MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-            function (err, db) {
-                if (err) throw err;
-                var dbo = db.db(databaseName);
-                dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-                    var docsJSONString = JSON.stringify(docs)
-                    docsJSONString = docsJSONString.replace(/[\[\]']+/g, '');
-                    ws.send(docsJSONString);
-                });
-            }
-        );
-        // var allEnergyToday = 100081;
-        // ws.send(allEnergyToday);
-    };
-
-    var onlineDevices = () => {
-        var onlineDevices = 0;
-        systemDevices.forEach(async (device) => {
-            var dataFromAPI = await axios.get(getVariableValue(device.device.id));
-            xml2js.parseString(dataFromAPI.data, (err, result) => {
-                if (err) {
-                    throw err;
-                }
-                const jsonString = JSON.stringify(result, null, 4);
-                var json = JSON.parse(jsonString);
-                if (parseInt(json.values.variable[24].value[0]) === DEVICE_ONLINE) {
-                    onlineDevices++;
-                }
-            });
-        })
-        ws.send(onlineDevices);
-    };
-
-    var offlineDevices = () => {
-        var offlineDevices = 0;
-        systemDevices.forEach(async (device) => {
-            var dataFromAPI = await axios.get(getVariableValue(device.device.id));
-            xml2js.parseString(dataFromAPI.data, (err, result) => {
-                if (err) {
-                    throw err;
-                }
-                const jsonString = JSON.stringify(result, null, 4);
-                var json = JSON.parse(jsonString);
-                if (parseInt(json.values.variable[24].value[0]) === DEVICE_OFFLINE) {
-                    offlineDevices++;
-                }
-            });
-        })
-        ws.send(onlineDevices);
-    };
-
-    var nonInitializedDevices = () => {
-        var nonInitializedDevices = 702;
-        ws.send(nonInitializedDevices);
-    };
-
-    ws.on('close', () => {
-        console.log('Disconnected from client web socket.');
+io.on('connection', (socket) => {
+    socket.on('event/alarm', (message) => {
+        socket.emit('event/alarm', alarmEvent());
     });
 
+    socket.on('event/handled_alarm', (message) => {
+        socket.emit('event/handled_alarm', handledAlarmEvents());
+    });
 
-    ws.send('Connect to Energy-Monitoring WebSocket');
+    socket.on('cost/today', (message) => {
+        socket.emit('cost/today', todayCost());
+    });
+
+    socket.on('saved_cost/today', (message) => {
+        socket.emit('saved_cost/today', todaySavedCostAsBaht());
+    });
+
+    // work
+    socket.on('all_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('all_energy/today', await allEnergyToday());
+        }, 3000);
+    });
+
+    // work
+    socket.on('devices-status=online', (message) => {
+        setInterval(() => {
+            socket.emit('devices-status=online', onlineDevices());
+        }, 3000);
+    });
+
+    // work
+    socket.on('devices-status=offline', (message) => {
+        setInterval(() => {
+            socket.emit('devices-status=offline', offlineDevices());
+        }, 3000);
+    });
+
+    // work
+    socket.on('pea/today', (message) => {
+        setInterval(async () => {
+            socket.emit('pea/today', await peaEnergyToday());
+        }, 3000);
+    });
+
+    // work
+    socket.on('solar/today', (message) => {
+        setInterval(async () => {
+            socket.emit('solar/today', await solarEnergyToday());
+        }, 3000);
+    });
+
+    socket.on('on_peak/today', (message) => {
+        setInterval(async () => {
+            socket.emit('on_peak/today', await onPeakToday());
+        }, 3000);
+    });
 });
+
+socketServer.listen(socketIOPort, () => {
+    console.log(`SocketIO is listening on port:${socketIOPort}`);
+});
+
+var alarmEvent = () => {
+    var todayAlarmEvents = 64;
+    return todayAlarmEvents;
+};
+
+var handledAlarmEvents = () => {
+    var handledAlarmEvents = 87;
+    return handledAlarmEvents;
+};
+
+var todayCost = () => {
+    // var aggregate = [
+    //     {
+    //         "$match": {
+    //             "createdAt": {
+    //                 $gte: new Date(today),
+    //                 $lt: new Date(tomorrow),
+    //             }
+    //         }
+    //     },
+    //     {
+    //         "$group": {
+    //             _id: {
+    //                 $dateTrunc: {
+    //                     date: "$createdAt",
+    //                     unit: "hour",
+    //                     binSize: 1
+    //                 }
+    //             },
+    //             "count": {
+    //                 "$count": {}
+    //             },
+    //             "power": {
+    //                 "$max": "$apis"
+    //             }
+    //         }
+    //     },
+    //     {
+    //         "$project": {
+    //             _id: 1,
+    //             power: 1,
+    //         }
+    //     },
+    // ]
+
+    // MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+    //     function (err, db) {
+    //         if (err) throw err;
+    //         var dbo = db.db(databaseName);
+    //         dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
+    //             res.send(docs)
+    //         });
+    //     }
+    // );
+    var todayCostAsBaht = 68700;
+    return todayCostAsBaht;
+};
+
+var todaySavedCostAsBaht = () => {
+    var todaySavedCostAsBaht = 42800; // minus if not save
+    return todaySavedCostAsBaht;
+};
+
+var allEnergyToday = async () => {
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "energy": {
+                    "$sum": "$ae"
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                energy: 1,
+            }
+        },
+        {
+            "$limit": 1
+        },
+    ]
+
+    const client = await MongoClient.connect(mongoUrl);
+    var db = client.db(databaseName);
+    const collection = db.collection(allDevicesCollection);
+    const result = await collection.aggregate(aggregate).toArray();
+    return result[0];
+};
+
+var peaEnergyToday = async () => {
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "energy": {
+                    "$sum": "$ae"
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                energy: 1,
+            }
+        },
+        {
+            "$limit": 1
+        },
+    ]
+
+    const client = await MongoClient.connect(mongoUrl);
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const result = await collection.aggregate(aggregate).toArray();
+    return result[0];
+};
+
+var solarEnergyToday = async () => {
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "energy": {
+                    "$sum": "$ae"
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                energy: 1,
+            }
+        },
+        {
+            "$limit": 1
+        },
+    ]
+
+    const client = await MongoClient.connect(mongoUrl);
+    var db = client.db(databaseName);
+    const collection = db.collection('solar');
+    const result = await collection.aggregate(aggregate).toArray();
+    console.log(result[0]);
+    return result[0];
+};
+
+var onlineDevices = () => {
+    var onlineDevices = 0;
+    systemDevices.forEach(async (device) => {
+        var dataFromAPI = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                                                <values>
+                                                    <variable>
+                                                        <id>${device}.AE</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AIN</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.API1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.API2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.API3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APIS</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPIS</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.DESCRIPTION</id>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.FRE</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.NAME</id>
+                                                        <textValue>${device}</textValue>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI1</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI2</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI2</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI3</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFIS</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPIS</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.STATUS</id>
+                                                        <value>${(Math.floor(Math.random()) == 0) ? 1 : 34}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDIN</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV12</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV23</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV31</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VDTTM</id>
+                                                        <value>01011999003545</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI12</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI23</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI31</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                </values>` : await axios.get(getVariableValue(device));
+        xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
+            if (err) {
+                throw err;
+            }
+            const jsonString = JSON.stringify(result, null, 4);
+            var json = JSON.parse(jsonString);
+            var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
+
+            if (deviceStatus !== NaN) {
+                if (deviceStatus === DEVICE_ONLINE) {
+                    onlineDevices++;
+                }
+            }
+        });
+    })
+    return { onlineDevices: onlineDevices };
+};
+
+var offlineDevices = () => {
+    var offlineDevices = 0;
+    systemDevices.forEach(async (device) => {
+        var dataFromAPI = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                                                <values>
+                                                    <variable>
+                                                        <id>${device}.AE</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.AIN</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.API1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.API2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.API3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APIS</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.APPIS</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.DESCRIPTION</id>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.FRE</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.NAME</id>
+                                                        <textValue>${device}</textValue>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI1</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI2</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI2</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFI3</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.PFIS</id>
+                                                        <value>9998.000000</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.RPIS</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.STATUS</id>
+                                                        <value>${(Math.floor(Math.random()) == 0) ? 1 : 34}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDIN</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV12</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV23</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.THDV31</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VDTTM</id>
+                                                        <value>01011999003545</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI1</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI12</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI2</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI23</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI3</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                    <variable>
+                                                        <id>${device}.VI31</id>
+                                                        <value>${Math.random() * 100 + 30}</value>
+                                                    </variable>
+                                                </values>` : await axios.get(getVariableValue(device));
+        xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
+            if (err) {
+                throw err;
+            }
+            const jsonString = JSON.stringify(result, null, 4);
+            var json = JSON.parse(jsonString);
+            var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
+
+            if (deviceStatus !== NaN) {
+                if (deviceStatus === DEVICE_OFFLINE) {
+                    offlineDevices++;
+                }
+            }
+        });
+    })
+    return { offlineDevices: offlineDevices };
+};
+
+var onPeakToday = async () => {
+    var onPeakStartTime = new Date(today);
+    onPeakStartTime.setHours(onPeakStartTime.getHours() + 9);
+    var onPeakEndTime = new Date(today);
+    onPeakEndTime.setHours(onPeakEndTime.getHours() + 22);
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: onPeakStartTime,
+                    $lt: onPeakEndTime,
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "allAE": {
+                    $addToSet: "$ae"
+                },
+            }
+        },
+    ]
+
+    if (onPeakStartTime.getDay() !== SATURDAY && onPeakStartTime.getDay() !== SUNDAY) {
+        const client = await MongoClient.connect(mongoUrl);
+        var db = client.db(databaseName);
+        const collection = db.collection('all');
+        const result = await collection.aggregate(aggregate).toArray();
+        console.log(result);
+        var sumOfFirstAE = 0;
+        var sumOfLastAE = 0;
+        if (result.length !== 0) {
+            var eachDeviceFirstAE = !isRealDevice ? result[0].allAE.slice(0, systemDevices.length) : result[0].allAE.slice(0, systemDevices.length - 1);
+            eachDeviceFirstAE.forEach((deviceAE) => {
+                if (deviceAE !== null)
+                    sumOfFirstAE += deviceAE;
+            });
+            var eachDeviceLastAE = !isRealDevice ? result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length) : result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length - 1);
+            eachDeviceLastAE.forEach((deviceAE) => {
+                if (deviceAE !== null)
+                    sumOfLastAE += deviceAE;
+            });
+        }
+        var onPeak = sumOfLastAE - sumOfFirstAE;
+        return { onPeak: onPeak };
+    } else {
+        return { onPeak: 0};
+    }
+};
