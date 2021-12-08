@@ -859,7 +859,7 @@ var todayCost = async () => {
     var offPeakCostPerUnit = 2.6037;
     var todayOnPeak = await onPeakToday();
     var todayOffPeak = await offPeakToday();
-    var todayCostAsBaht = (todayOnPeak * onPeakCostPerUnit) + (todayOffPeak * offPeakCostPerUnit);
+    var todayCostAsBaht = (todayOnPeak.onPeak * onPeakCostPerUnit) + (todayOffPeak.offPeak * offPeakCostPerUnit);
     return { todayCost: todayCostAsBaht };
 };
 
@@ -966,6 +966,11 @@ var eachDevicesEnergyToday = async () => {
                 }
             }
         },
+        {
+            "$sort": {
+                _id: 1
+            }
+        }
     ]
     var db = client.db(databaseName);
     const collection = db.collection('meter');
@@ -991,6 +996,12 @@ var eachSolarEnergyToday = async () => {
                 }
             }
         },
+        {
+            "$sort": {
+                _id: 1
+            }
+
+        }
     ]
     var db = client.db(databaseName);
     const collection = db.collection('solar');
