@@ -744,9 +744,12 @@ var getSystemDevices = async () => {
     }
 }
 
-app.listen(port, () => {
+var client;
+
+app.listen(port, async () => {
     setIsRealDevices(false);
     getSystemDevices();
+    client = await MongoClient.connect(mongoUrl);
     console.log(`Energy Monitoring API is listening on port ${port}.`);
 });
 
@@ -899,8 +902,6 @@ var allEnergyToday = async () => {
             "$limit": 1
         },
     ]
-
-    const client = await MongoClient.connect(mongoUrl);
     var db = client.db(databaseName);
     const collection = db.collection(allDevicesCollection);
     const result = await collection.aggregate(aggregate).toArray();
@@ -941,8 +942,6 @@ var peaEnergyToday = async () => {
             "$limit": 1
         },
     ]
-
-    const client = await MongoClient.connect(mongoUrl);
     var db = client.db(databaseName);
     const collection = db.collection('meter');
     const result = await collection.aggregate(aggregate).toArray();
@@ -968,8 +967,6 @@ var eachDevicesEnergyToday = async () => {
             }
         },
     ]
-
-    const client = await MongoClient.connect(mongoUrl);
     var db = client.db(databaseName);
     const collection = db.collection('meter');
     const result = await collection.aggregate(aggregate).toArray();
@@ -995,8 +992,6 @@ var eachSolarEnergyToday = async () => {
             }
         },
     ]
-
-    const client = await MongoClient.connect(mongoUrl);
     var db = client.db(databaseName);
     const collection = db.collection('solar');
     const result = await collection.aggregate(aggregate).toArray();
@@ -1037,8 +1032,6 @@ var solarEnergyToday = async () => {
             "$limit": 1
         },
     ]
-
-    const client = await MongoClient.connect(mongoUrl);
     var db = client.db(databaseName);
     const collection = db.collection('solar');
     const result = await collection.aggregate(aggregate).toArray();
@@ -1471,7 +1464,6 @@ var onPeakToday = async () => {
     ]
 
     if (onPeakStartTime.getDay() !== SATURDAY && onPeakStartTime.getDay() !== SUNDAY) {
-        const client = await MongoClient.connect(mongoUrl);
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
@@ -1537,7 +1529,6 @@ var offPeakToday = async () => {
     ]
 
     if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
-        const client = await MongoClient.connect(mongoUrl);
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
