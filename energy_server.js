@@ -87,7 +87,7 @@ var insertData = async () => {
             // console.log(response.data);
             responseList.push(response.data);
         }
-        console.log(responseList);
+        // console.log(responseList);
         responseList = [];
     } catch (error) {
         console.error(error);
@@ -616,7 +616,7 @@ app.get('/controllers_amount/', (req, res) => {
                     sentData.push({ date: day._id, offlineDevices: offlineDevicesList.length, onlineDevices: systemDevices.length - offlineDevicesList.length });
                     offlineDevicesList = [];
                 })
-                console.log(sentData);
+                // console.log(sentData);
                 res.send(sentData);
             });
         }
@@ -1046,7 +1046,7 @@ var solarEnergyToday = async () => {
     var db = client.db(databaseName);
     const collection = db.collection('solar');
     const result = await collection.aggregate(aggregate).toArray();
-    console.log(result[0]);
+    // console.log(result[0]);
     return result[0];
 };
 
@@ -1445,10 +1445,10 @@ var onPeakToday = async () => {
     onPeakStartTime.setHours(onPeakStartTime.getHours() + 2);
     var onPeakEndTime = new Date(today);
     onPeakEndTime.setHours(onPeakEndTime.getHours() + 15);
-    console.log(`onPeakStartTime = ${onPeakStartTime}`);
-    console.log(`onPeakStartTime ISOString = ${onPeakStartTime.toISOString()}`);
-    console.log(`onPeakEndTime = ${onPeakEndTime}`);
-    console.log(`onPeakEndTime ISOString = ${onPeakEndTime.toISOString()}`);
+    // console.log(`onPeakStartTime = ${onPeakStartTime}`);
+    // console.log(`onPeakStartTime ISOString = ${onPeakStartTime.toISOString()}`);
+    // console.log(`onPeakEndTime = ${onPeakEndTime}`);
+    // console.log(`onPeakEndTime ISOString = ${onPeakEndTime.toISOString()}`);
     var aggregate = [
         {
             "$match": {
@@ -1478,7 +1478,7 @@ var onPeakToday = async () => {
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
-        console.log(result);
+        // console.log(result);
         var sumOfFirstAE = 0;
         var sumOfLastAE = 0;
         if (result.length !== 0) {
@@ -1510,10 +1510,10 @@ var offPeakToday = async () => {
         offPeakStartTime = new Date(today);
         offPeakEndTime = new Date(tomorrow);
     }
-    console.log(`offPeakStartTime = ${offPeakStartTime}`);
-    console.log(`offPeakStartTime ISOString = ${offPeakStartTime.toISOString()}`);
-    console.log(`offPeakEndTime = ${offPeakEndTime}`);
-    console.log(`offPeakEndTime ISOString = ${offPeakEndTime.toISOString()}`);
+    // console.log(`offPeakStartTime = ${offPeakStartTime}`);
+    // console.log(`offPeakStartTime ISOString = ${offPeakStartTime.toISOString()}`);
+    // console.log(`offPeakEndTime = ${offPeakEndTime}`);
+    // console.log(`offPeakEndTime ISOString = ${offPeakEndTime.toISOString()}`);
     var aggregate = [
         {
             "$match": {
@@ -1543,7 +1543,7 @@ var offPeakToday = async () => {
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
-        console.log(result);
+        // console.log(result);
         var sumOfFirstAE = 0;
         var sumOfLastAE = 0;
         if (result.length !== 0) {
