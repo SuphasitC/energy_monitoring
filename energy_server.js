@@ -3,9 +3,6 @@ const MongoClient = require('mongodb').MongoClient;
 const xml2js = require('xml2js');
 var cors = require('cors')
 const axios = require('axios');
-// const WebSocket = require('ws');
-// const webSocketPort = 4001;
-// const ws = new WebSocket.Server({ port: webSocketPort });
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -25,7 +22,7 @@ const mongoUrl = 'mongodb://cocoad:CocoaD12345@43.229.134.139:27018/energy-monit
 const port = 8000;
 
 const powerPort = 8080;
-const powerUrl = 'http://127.0.0.1:' + powerPort;
+const powerUrl = 'http://localhost:' + powerPort;
 
 const socketIOPort = 4000;
 
@@ -84,10 +81,8 @@ var insertData = async () => {
         var responseList = [];
         for (var i = 0; i < systemDevices.length; i++) {
             var response = await axios.post(`http://127.0.0.1:${port}/devices/${systemDevices[i]}`);
-            // console.log(response.data);
             responseList.push(response.data);
         }
-        // console.log(responseList);
         responseList = [];
     } catch (error) {
         console.error(error);
@@ -95,7 +90,6 @@ var insertData = async () => {
 }
 
 var cleansingData = (json, device) => {
-    // console.log(JSON.stringify(json));
     var deviceName = json.values.variable.find((element) => element.id[0] == `${device}.NAME`) !== undefined ?
         json.values.variable.find((element) => element.id[0] == `${device}.NAME`).textValue[0] : null;
     var ae = json.values.variable.find((element) => element.id[0] == `${device}.AE`) !== undefined ?
@@ -126,8 +120,8 @@ var cleansingData = (json, device) => {
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI2`).value[0]) : null;
     var thdi3 = json.values.variable.find((element) => element.id[0] == `${device}.THDI3`) !== undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI3`).value[0]) : null;
-    var thdv1 = json.values.variable.find((element) => element.id[0] == `${device}.THDV1`).value[0];
-    parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV1`).value[0])
+    var thdv1 = json.values.variable.find((element) => element.id[0] == `${device}.THDV1`) !== undefined ?
+        parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV1`).value[0]) : null;
     var thdv2 = json.values.variable.find((element) => element.id[0] == `${device}.THDV2`) !== undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV2`).value[0]) : null;
     var thdv3 = json.values.variable.find((element) => element.id[0] == `${device}.THDV3`) !== undefined ?
@@ -407,9 +401,6 @@ app.get('/power/apis_per_hr/', (req, res) => {
                         binSize: 1
                     }
                 },
-                "count": {
-                    "$count": {}
-                },
                 "power": {
                     "$max": "$apis"
                 },
@@ -468,8 +459,6 @@ app.get('/power/apis_per_hr/', (req, res) => {
 });
 
 app.get('/energy/all/', (req, res) => {
-    // var date = req.query.date;
-
     var aggregate = [
         {
             "$match": {
@@ -700,6 +689,9 @@ yesterday = yesterday.substring(0, 10);
 var databaseName = 'energy-monitoring';
 var allDevicesCollection = 'all';
 
+const ON_PEAK_COST_PER_UNIT = 4.1839;
+const OFF_PEAK_COST_PER_UNIT = 2.6037;
+
 const SUNDAY = 0;
 const MONDAY = 1;
 const TUESDAY = 2;
@@ -734,8 +726,10 @@ var getSystemDevices = async () => {
             var json = JSON.parse(jsonString);
             if (systemDevices !== []) {
                 json.devices.id.forEach((device) => {
-                    systemDevices.push(device);
-                    console.log(`${device} is added to systemDevices list.`);
+                    if ((device.startsWith("MDB") && !device.endsWith("Care")) || device.startsWith("B1") || device.startsWith("Solar")) {
+                        systemDevices.push(device);
+                        console.log(`${device} is added to systemDevices list.`);
+                    }
                 });
             }
         });
@@ -747,9 +741,10 @@ var getSystemDevices = async () => {
 var client;
 
 app.listen(port, async () => {
-    setIsRealDevices(false);
+    setIsRealDevices(true);
     getSystemDevices();
     client = await MongoClient.connect(mongoUrl);
+    console.log('Fetch device from:' + GET_DEVICES_PATH);
     console.log(`Energy Monitoring API is listening on port ${port}.`);
 });
 
@@ -771,31 +766,29 @@ io.on('connection', (socket) => {
     });
 
     socket.on('saved_cost/today', (message) => {
-        socket.emit('saved_cost/today', todaySavedCostAsBaht());
+        setInterval(async () => {
+            socket.emit('saved_cost/today', await todaySavedCostAsBaht());
+        }, 3000);
     });
 
-    // work
     socket.on('all_energy/today', (message) => {
         setInterval(async () => {
             socket.emit('all_energy/today', await allEnergyToday());
         }, 3000);
     });
 
-    // work
     socket.on('devices-status=online', (message) => {
-        setInterval(() => {
-            socket.emit('devices-status=online', onlineDevices());
+        setInterval(async () => {
+            socket.emit('devices-status=online', await onlineDevices());
         }, 3000);
     });
 
-    // work
     socket.on('devices-status=offline', (message) => {
-        setInterval(() => {
-            socket.emit('devices-status=offline', offlineDevices());
+        setInterval(async () => {
+            socket.emit('devices-status=offline', await offlineDevices());
         }, 3000);
     });
 
-    // work
     socket.on('pea/today', (message) => {
         setInterval(async () => {
             socket.emit('pea/today', await peaEnergyToday());
@@ -811,10 +804,9 @@ io.on('connection', (socket) => {
     socket.on('solar/all_energy/today', (message) => {
         setInterval(async () => {
             socket.emit('solar/all_energy/today', await eachSolarEnergyToday());
-        });
+        }, 3000);
     });
 
-    // work
     socket.on('solar/today', (message) => {
         setInterval(async () => {
             socket.emit('solar/today', await solarEnergyToday());
@@ -855,21 +847,28 @@ var handledAlarmEvents = () => {
 };
 
 var todayCost = async () => {
-    var onPeakCostPerUnit = 4.1839;
-    var offPeakCostPerUnit = 2.6037;
     var todayOnPeak = await onPeakToday();
     var todayOffPeak = await offPeakToday();
-    var todayCostAsBaht = (todayOnPeak.onPeak * onPeakCostPerUnit) + (todayOffPeak.offPeak * offPeakCostPerUnit);
+    var todayCostAsBaht = (todayOnPeak.onPeak * ON_PEAK_COST_PER_UNIT) + (todayOffPeak.offPeak * OFF_PEAK_COST_PER_UNIT);
     return { todayCost: todayCostAsBaht };
 };
 
-var todaySavedCostAsBaht = () => {
-    var todaySavedCostAsBaht = 42800; // minus if not save
-    return todaySavedCostAsBaht;
+var yesterdayCost = async () => {
+    var yesterdayOnPeak = await onPeakYesterday();
+    var yesterdayOffPeak = await offPeakYesterday();
+    var yesterdayCostAsBaht = (yesterdayOnPeak.onPeak * ON_PEAK_COST_PER_UNIT) + (yesterdayOffPeak.offPeak * OFF_PEAK_COST_PER_UNIT);
+    return { yesterdayCost: yesterdayCostAsBaht };
+};
+
+var todaySavedCostAsBaht = async () => {
+    var today = await todayCost();
+    var yesterday = await yesterdayCost();
+    var todaySavedCost = yesterday.yesterdayCost - today.todayCost;
+    return { todaySavedCost: todaySavedCost };
 };
 
 var allEnergyToday = async () => {
-    var aggregate = [
+    var todayAllEnergyAggregate = [
         {
             "$match": {
                 "createdAt": {
@@ -880,15 +879,9 @@ var allEnergyToday = async () => {
         },
         {
             "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1
-                    }
-                },
+                _id: "$deviceName",
                 "energy": {
-                    "$sum": "$ae"
+                    "$last": "$ae"
                 }
             }
         },
@@ -898,18 +891,54 @@ var allEnergyToday = async () => {
                 energy: 1,
             }
         },
+    ];
+
+    var yesterdayAllEnergyAggregate = [
         {
-            "$limit": 1
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(yesterday),
+                    $lt: new Date(today),
+                }
+            }
         },
-    ]
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": {
+                    "$last": "$ae"
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                energy: 1,
+            }
+        },
+    ];
+
     var db = client.db(databaseName);
     const collection = db.collection(allDevicesCollection);
-    const result = await collection.aggregate(aggregate).toArray();
-    return result[0];
+    const todayResult = await collection.aggregate(todayAllEnergyAggregate).toArray();
+    const yesterdayResult = await collection.aggregate(yesterdayAllEnergyAggregate).toArray();
+    var todayAllEnergy = 0;
+    var yesterdayAllEnergy = 0;
+
+    for (var result of todayResult) {
+        todayAllEnergy += result.energy;
+    }
+
+    for (var result of yesterdayResult) {
+        yesterdayAllEnergy += result.energy;
+    }
+
+    var allEnergyToday = todayAllEnergy - yesterdayAllEnergy;
+    return { energy: allEnergyToday };
 };
 
 var peaEnergyToday = async () => {
-    var aggregate = [
+    var todayPEAEnergyAggregate = [
         {
             "$match": {
                 "createdAt": {
@@ -941,76 +970,50 @@ var peaEnergyToday = async () => {
         {
             "$limit": 1
         },
-    ]
-    var db = client.db(databaseName);
-    const collection = db.collection('meter');
-    const result = await collection.aggregate(aggregate).toArray();
-    return result[0];
-};
-
-var eachDevicesEnergyToday = async () => {
-    var aggregate = [
+    ];
+    var yesterdayPEAEnergyAggregate = [
         {
             "$match": {
                 "createdAt": {
-                    $gte: new Date(today),
-                    $lt: new Date(tomorrow),
+                    $gte: new Date(yesterday),
+                    $lt: new Date(today),
                 }
             }
         },
         {
             "$group": {
-                _id: "$deviceName",
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
                 "energy": {
                     "$sum": "$ae"
                 }
             }
         },
         {
-            "$sort": {
-                _id: 1
+            "$project": {
+                _id: 0,
+                energy: 1,
             }
-        }
+        },
+        {
+            "$limit": 1
+        },
     ]
     var db = client.db(databaseName);
     const collection = db.collection('meter');
-    const result = await collection.aggregate(aggregate).toArray();
-    return result;
-};
-
-var eachSolarEnergyToday = async () => {
-    var aggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(today),
-                    $lt: new Date(tomorrow),
-                }
-            }
-        },
-        {
-            "$group": {
-                _id: "$deviceName",
-                "energy": {
-                    "$sum": "$ae"
-                }
-            }
-        },
-        {
-            "$sort": {
-                _id: 1
-            }
-
-        }
-    ]
-    var db = client.db(databaseName);
-    const collection = db.collection('solar');
-    const result = await collection.aggregate(aggregate).toArray();
-    return result;
+    const todayResult = await collection.aggregate(todayPEAEnergyAggregate).toArray();
+    const yesterdayResult = await collection.aggregate(yesterdayPEAEnergyAggregate).toArray();
+    var todayPEAAllEnergy = todayResult[0].energy - yesterdayResult[0].energy;
+    return { energy: todayPEAAllEnergy };
 };
 
 var solarEnergyToday = async () => {
-    var aggregate = [
+    var todaySolarEnergyAggregate = [
         {
             "$match": {
                 "createdAt": {
@@ -1042,191 +1045,353 @@ var solarEnergyToday = async () => {
         {
             "$limit": 1
         },
-    ]
+    ];
+
+    var yesterdaySolarEnergyAggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(yesterday),
+                    $lt: new Date(today),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "energy": {
+                    "$sum": "$ae"
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                energy: 1,
+            }
+        },
+        {
+            "$limit": 1
+        },
+    ];
+
     var db = client.db(databaseName);
     const collection = db.collection('solar');
-    const result = await collection.aggregate(aggregate).toArray();
-    // console.log(result[0]);
-    return result[0];
+    const todayResult = await collection.aggregate(todaySolarEnergyAggregate).toArray();
+    const yesterdayResult = await collection.aggregate(yesterdaySolarEnergyAggregate).toArray();
+    var todaySolarEnergy = todayResult[0].energy - yesterdayResult[0].energy;
+    return { energy: todaySolarEnergy };
 };
 
-var onlineDevices = () => {
+var eachDevicesEnergyToday = async () => {
+    var todayAllEnergyAggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": { "$last": "$ae" }
+            }
+        },
+        {
+            "$sort": {
+                _id: 1
+            }
+        }
+    ];
+
+    var yesterdayAllEnergyAggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(yesterday),
+                    $lt: new Date(today),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": { "$last": "$ae" }
+            }
+        },
+        {
+            "$sort": {
+                _id: 1
+            }
+        }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const todayResult = await collection.aggregate(todayAllEnergyAggregate).toArray();
+    const yesterdayResult = await collection.aggregate(yesterdayAllEnergyAggregate).toArray();
+    var devicesEnergyToday = [];
+    var currentYesterdayResultCalculationIndex = 0;
+
+    for (result of todayResult) {
+        if (currentYesterdayResultCalculationIndex < yesterdayResult.length) {
+            const deviceEnergy = result.energy - yesterdayResult[currentYesterdayResultCalculationIndex].energy;
+            currentYesterdayResultCalculationIndex++;
+            devicesEnergyToday.push({ _id: result._id, energy: deviceEnergy });
+        }
+    }
+
+    return devicesEnergyToday;
+};
+
+var eachSolarEnergyToday = async () => {
+    var todayAllEnergyAggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": { "$last": "$ae" }
+            }
+        },
+        {
+            "$sort": {
+                _id: 1
+            }
+        }
+    ];
+
+    var yesterdayAllEnergyAggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: new Date(yesterday),
+                    $lt: new Date(today),
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "energy": { "$last": "$ae" }
+            }
+        },
+        {
+            "$sort": {
+                _id: 1
+            }
+        }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('solar');
+    const todayResult = await collection.aggregate(todayAllEnergyAggregate).toArray();
+    const yesterdayResult = await collection.aggregate(yesterdayAllEnergyAggregate).toArray();
+    var solarEnergyToday = [];
+    var currentYesterdayResultCalculationIndex = 0;
+
+    for (result of todayResult) {
+        if (currentYesterdayResultCalculationIndex < yesterdayResult.length) {
+            const solarEnergy = result.energy - yesterdayResult[currentYesterdayResultCalculationIndex].energy;
+            currentYesterdayResultCalculationIndex++;
+            solarEnergyToday.push({ _id: result._id, energy: solarEnergy });
+        }
+    }
+
+    return solarEnergyToday;
+};
+
+var onlineDevices = async () => {
     var onlineDevices = 0;
-    systemDevices.forEach(async (device) => {
+    for (var device of systemDevices) {
         var dataFromAPI = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                                                <values>
-                                                    <variable>
-                                                        <id>${device}.AE</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.AI1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.AI2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.AI3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.AIN</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.API1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.API2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.API3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.APIS</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.APPI1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.APPI2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.APPI3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.APPIS</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.DESCRIPTION</id>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.FRE</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.NAME</id>
-                                                        <textValue>${device}</textValue>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.PFI1</id>
-                                                        <value>9998.000000</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.PFI2</id>
-                                                        <value>9998.000000</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.PFI2</id>
-                                                        <value>9998.000000</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.PFI3</id>
-                                                        <value>9998.000000</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.PFIS</id>
-                                                        <value>9998.000000</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.RPI1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.RPI2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.RPI3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.RPIS</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.STATUS</id>
-                                                        <value>${(Math.floor(Math.random()) == 0) ? 1 : 34}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDI1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDI2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDI3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDIN</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDV1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDV12</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDV2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDV23</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDV3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.THDV31</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VDTTM</id>
-                                                        <value>01011999003545</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VI1</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VI12</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VI2</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VI23</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VI3</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                    <variable>
-                                                        <id>${device}.VI31</id>
-                                                        <value>${Math.random() * 100 + 30}</value>
-                                                    </variable>
-                                                </values>` : await axios.get(getVariableValue(device));
+                                                    <values>
+                                                        <variable>
+                                                            <id>${device}.AE</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.AI1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.AI2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.AI3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.AIN</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.API1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.API2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.API3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.APIS</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.APPI1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.APPI2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.APPI3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.APPIS</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.DESCRIPTION</id>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.FRE</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.NAME</id>
+                                                            <textValue>${device}</textValue>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.PFI1</id>
+                                                            <value>9998.000000</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.PFI2</id>
+                                                            <value>9998.000000</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.PFI2</id>
+                                                            <value>9998.000000</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.PFI3</id>
+                                                            <value>9998.000000</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.PFIS</id>
+                                                            <value>9998.000000</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.RPI1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.RPI2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.RPI3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.RPIS</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.STATUS</id>
+                                                            <value>${(Math.floor(Math.random()) == 0) ? 1 : 34}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDI1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDI2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDI3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDIN</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDV1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDV12</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDV2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDV23</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDV3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.THDV31</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VDTTM</id>
+                                                            <value>01011999003545</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VI1</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VI12</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VI2</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VI23</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VI3</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                        <variable>
+                                                            <id>${device}.VI31</id>
+                                                            <value>${Math.random() * 100 + 30}</value>
+                                                        </variable>
+                                                    </values>` : await axios.get(getVariableValue(device));
         xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
             if (err) {
                 throw err;
@@ -1241,13 +1406,14 @@ var onlineDevices = () => {
                 }
             }
         });
-    })
+    }
+
     return { onlineDevices: onlineDevices };
 };
 
-var offlineDevices = () => {
+var offlineDevices = async () => {
     var offlineDevices = 0;
-    systemDevices.forEach(async (device) => {
+    for (var device of systemDevices) {
         var dataFromAPI = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                                                 <values>
                                                     <variable>
@@ -1436,19 +1602,18 @@ var offlineDevices = () => {
                 }
             }
         });
-    })
+    }
+
     return { offlineDevices: offlineDevices };
 };
 
 var onPeakToday = async () => {
+    var todayOnPeak = 0;
     var onPeakStartTime = new Date(today);
     onPeakStartTime.setHours(onPeakStartTime.getHours() + 2);
     var onPeakEndTime = new Date(today);
     onPeakEndTime.setHours(onPeakEndTime.getHours() + 15);
-    // console.log(`onPeakStartTime = ${onPeakStartTime}`);
-    // console.log(`onPeakStartTime ISOString = ${onPeakStartTime.toISOString()}`);
-    // console.log(`onPeakEndTime = ${onPeakEndTime}`);
-    // console.log(`onPeakEndTime ISOString = ${onPeakEndTime.toISOString()}`);
+
     var aggregate = [
         {
             "$match": {
@@ -1460,49 +1625,53 @@ var onPeakToday = async () => {
         },
         {
             "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1,
-                    }
+                _id: "$deviceName",
+                "firstAE": {
+                    "$first": "$ae"
                 },
-                "allAE": {
-                    $addToSet: "$ae"
-                },
+                "nowAE": {
+                    "$last": "$ae"
+                }
             }
         },
-    ]
+        {
+            $addFields: {
+                "onPeak": {
+                    "$subtract": [
+                        "$nowAE",
+                        "$firstAE"
+                    ]
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                onPeak: 1
+            }
+        },
+    ];
 
     if (onPeakStartTime.getDay() !== SATURDAY && onPeakStartTime.getDay() !== SUNDAY) {
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
-        // console.log(result);
-        var sumOfFirstAE = 0;
-        var sumOfLastAE = 0;
-        if (result.length !== 0) {
-            var eachDeviceFirstAE = !isRealDevice ? result[0].allAE.slice(0, systemDevices.length) : result[0].allAE.slice(0, systemDevices.length - 1);
-            eachDeviceFirstAE.forEach((deviceAE) => {
-                if (deviceAE !== null)
-                    sumOfFirstAE += deviceAE;
-            });
-            var eachDeviceLastAE = !isRealDevice ? result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length) : result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length - 1);
-            eachDeviceLastAE.forEach((deviceAE) => {
-                if (deviceAE !== null)
-                    sumOfLastAE += deviceAE;
-            });
+
+        for (var onPeak of result) {
+            todayOnPeak += onPeak.onPeak;
         }
-        var onPeak = Math.abs(sumOfLastAE - sumOfFirstAE);
-        return { onPeak: onPeak };
+
+        return { onPeak: todayOnPeak };
     } else {
         return { onPeak: 0 };
     }
 };
 
 var offPeakToday = async () => {
+    var todayOffPeak = 0;
     var offPeakStartTime = new Date(today);
     var offPeakEndTime = new Date();
+
     if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
         offPeakStartTime.setHours(offPeakStartTime.getHours() + 15);
         offPeakEndTime = new Date();
@@ -1510,10 +1679,7 @@ var offPeakToday = async () => {
         offPeakStartTime = new Date(today);
         offPeakEndTime = new Date(tomorrow);
     }
-    // console.log(`offPeakStartTime = ${offPeakStartTime}`);
-    // console.log(`offPeakStartTime ISOString = ${offPeakStartTime.toISOString()}`);
-    // console.log(`offPeakEndTime = ${offPeakEndTime}`);
-    // console.log(`offPeakEndTime ISOString = ${offPeakEndTime.toISOString()}`);
+
     var aggregate = [
         {
             "$match": {
@@ -1525,44 +1691,164 @@ var offPeakToday = async () => {
         },
         {
             "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1
-                    }
+                _id: "$deviceName",
+                "firstAE": {
+                    "$first": "$ae"
                 },
-                "allAE": {
-                    $addToSet: "$ae"
-                },
+                "nowAE": {
+                    "$last": "$ae"
+                }
             }
         },
-    ]
+        {
+            $addFields: {
+                "offPeak": {
+                    "$subtract": [
+                        "$nowAE",
+                        "$firstAE"
+                    ]
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                offPeak: 1
+            }
+        },
+    ];
 
-    if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
+    var db = client.db(databaseName);
+    const collection = db.collection('all');
+    const result = await collection.aggregate(aggregate).toArray();
+
+    for (var offPeak of result) {
+        todayOffPeak += offPeak.offPeak;
+    }
+
+    return { offPeak: todayOffPeak };
+};
+
+var onPeakYesterday = async () => {
+    var yesterdayOnPeak = 0;
+    var onPeakStartTime = new Date(yesterday);
+    onPeakStartTime.setHours(onPeakStartTime.getHours() + 2);
+    var onPeakEndTime = new Date(yesterday);
+    onPeakEndTime.setHours(onPeakEndTime.getHours() + 15);
+
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: onPeakStartTime,
+                    $lt: onPeakEndTime,
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "firstAE": {
+                    "$first": "$ae"
+                },
+                "nowAE": {
+                    "$last": "$ae"
+                }
+            }
+        },
+        {
+            $addFields: {
+                "onPeak": {
+                    "$subtract": [
+                        "$nowAE",
+                        "$firstAE"
+                    ]
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                onPeak: 1
+            }
+        },
+    ];
+
+    if (onPeakStartTime.getDay() !== SATURDAY && onPeakStartTime.getDay() !== SUNDAY) {
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
-        // console.log(result);
-        var sumOfFirstAE = 0;
-        var sumOfLastAE = 0;
-        if (result.length !== 0) {
-            var eachDeviceFirstAE = !isRealDevice ? result[0].allAE.slice(0, systemDevices.length) : result[0].allAE.slice(0, systemDevices.length - 1);
-            eachDeviceFirstAE.forEach((deviceAE) => {
-                if (deviceAE !== null)
-                    sumOfFirstAE += deviceAE;
-            });
-            var eachDeviceLastAE = !isRealDevice ? result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length) : result[0].allAE.slice(result[0].allAE.length - systemDevices.length, result[0].allAE.length - 1);
-            eachDeviceLastAE.forEach((deviceAE) => {
-                if (deviceAE !== null)
-                    sumOfLastAE += deviceAE;
-            });
+
+        for (var onPeak of result) {
+            yesterdayOnPeak += onPeak.onPeak;
         }
-        var offPeak = Math.abs(sumOfLastAE - sumOfFirstAE);
-        return { offPeak: offPeak };
+
+        return { onPeak: yesterdayOnPeak };
     } else {
-        return { offPeak: 0 };
+        return { onPeak: 0 };
     }
+};
+
+var offPeakYesterday = async () => {
+    var yesterdayOffPeak = 0;
+    var offPeakStartTime = new Date(yesterday);
+    var offPeakEndTime = new Date(today);
+
+    if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
+        offPeakStartTime.setHours(offPeakStartTime.getHours() + 15);
+        offPeakEndTime.setHours(offPeakEndTime.getHours() + 2);
+    } else {
+        offPeakStartTime = new Date(yesterday);
+        offPeakEndTime = new Date(today);
+    }
+
+    var aggregate = [
+        {
+            "$match": {
+                "createdAt": {
+                    $gte: offPeakStartTime,
+                    $lt: offPeakEndTime,
+                }
+            }
+        },
+        {
+            "$group": {
+                _id: "$deviceName",
+                "firstAE": {
+                    "$first": "$ae"
+                },
+                "nowAE": {
+                    "$last": "$ae"
+                }
+            }
+        },
+        {
+            $addFields: {
+                "offPeak": {
+                    "$subtract": [
+                        "$nowAE",
+                        "$firstAE"
+                    ]
+                }
+            }
+        },
+        {
+            "$project": {
+                _id: 0,
+                offPeak: 1
+            }
+        },
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('all');
+    const result = await collection.aggregate(aggregate).toArray();
+
+    for (var offPeak of result) {
+        yesterdayOffPeak += offPeak.offPeak;
+    }
+
+    return { offPeak: yesterdayOffPeak };
 };
 
 var getAlarmEvent = async () => {
