@@ -337,7 +337,6 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
         }
         const jsonString = JSON.stringify(result, null, 4);
         var json = JSON.parse(jsonString);
-        // console.log(JSON.stringify(json))
         var cleansingJSON = cleansingData(json, deviceId)
 
         const date = new Date().toISOString()
@@ -369,6 +368,36 @@ app.get('/', (req, res) => {
     res.send('Energy Monitoring - API')
 });
 
+app.get('/power/all', async (req, res) => {
+    var allDevicesPowerInEachHour = [];
+    try {
+        var allPEAPowerResponse = await axios.get(`http://127.0.0.1:${port}/power/apis_per_hr/pea/all`);
+        var allSolarPowerResponse = await axios.get(`http://127.0.0.1:${port}/power/apis_per_hr/solar/all`);
+        allDevicesPowerInEachHour.push(allPEAPowerResponse.data);
+        allDevicesPowerInEachHour.push(allSolarPowerResponse.data);
+
+    } catch (error) {
+        console.error(error);
+    }
+
+    console.log(allDevicesPowerInEachHour);
+
+    var allDevicesInEachHourToResponse = [];
+
+    for (var i = 0; i < 24; i++) {
+        var allPower = 0;
+        var _id;
+        for (var eachDevicePowerInEachHour of allDevicesPowerInEachHour) {
+            console.log(eachDevicePowerInEachHour);
+            _id = eachDevicePowerInEachHour[i]._id;
+            allPower += eachDevicePowerInEachHour[i].power;
+        }
+        allDevicesInEachHourToResponse.push({ _id: _id, power: allPower, hour: i });
+    }
+
+    res.send(allDevicesInEachHourToResponse);
+});
+
 app.get('/power/apis_per_hr/', (req, res) => {
     var date = req.query.date;
 
@@ -385,7 +414,7 @@ app.get('/power/apis_per_hr/', (req, res) => {
 
     var aggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: aggGteDate,
                     $lt: aggLtDate
@@ -393,7 +422,7 @@ app.get('/power/apis_per_hr/', (req, res) => {
             }
         },
         {
-            "$group": {
+            $group: {
                 _id: {
                     $dateTrunc: {
                         date: "$createdAt",
@@ -402,26 +431,26 @@ app.get('/power/apis_per_hr/', (req, res) => {
                     }
                 },
                 "power": {
-                    "$max": "$apis"
+                    $max: "$apis"
                 },
             }
         },
         {
-            "$addFields": {
+            $addFields: {
                 "hour": {
-                    "$toInt": { "$substr": ["$_id", 11, 2] }
+                    $toInt: { $substr: ["$_id", 11, 2] }
                 }
             }
         },
         {
-            "$project": {
+            $project: {
                 _id: 1,
                 power: 1,
                 hour: 1,
             }
         },
         {
-            "$sort": {
+            $sort: {
                 _id: 1
             }
         }
@@ -458,19 +487,48 @@ app.get('/power/apis_per_hr/', (req, res) => {
     );
 });
 
-app.get('/energy/all/', (req, res) => {
+app.get('/power/apis_per_hr/solar/all', async (req, res) => {
+    var allDevicesPowerInEachHour = [];
+    try {
+        for (var device of systemDevices) {
+            if (device.startsWith('Solar')) {
+                var response = await axios.get(`http://127.0.0.1:${port}/power/apis_per_hr/solar?device=${device}`);
+                allDevicesPowerInEachHour.push(response.data);
+            }
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    var solarAllPowerInEachHour = [];
+
+    for (var i = 0; i < 24; i++) {
+        var allPower = 0;
+        var _id;
+        for (var eachDevicePowerInEachHour of allDevicesPowerInEachHour) {
+            _id = eachDevicePowerInEachHour[i]._id;
+            allPower += eachDevicePowerInEachHour[i].power;
+        }
+        solarAllPowerInEachHour.push({ _id: _id, power: allPower, hour: i });
+    }
+
+    res.send(solarAllPowerInEachHour);
+});
+
+app.get('/power/apis_per_hr/solar/', (req, res) => {
+    var device = req.query.device;
+
     var aggregate = [
         {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(today),
-                    $lt: new Date(tomorrow)
-                }
+            $match: {
+                $and: [
+                    { "createdAt": { $gte: new Date(today), $lt: new Date(tomorrow) } },
+                    { "deviceName": device }
+                ],
             }
         },
-
         {
-            "$group": {
+            $group: {
                 _id: {
                     $dateTrunc: {
                         date: "$createdAt",
@@ -478,53 +536,399 @@ app.get('/energy/all/', (req, res) => {
                         binSize: 1
                     }
                 },
-                "count": {
-                    "$count": {}
+                "power": {
+                    $max: "$apis"
                 },
-                "start": {
-                    "$first": "$ae"
-                },
-                "end": {
-                    "$last": "$ae"
-                }
             }
         },
         {
             $addFields: {
-                "energy": {
-                    "$subtract": [
-                        "$end",
-                        "$start"
-                    ]
-                }
-            }
-        },
-        {
-            "$addFields": {
                 "hour": {
-                    "$toInt": { "$substr": ["$_id", 11, 2] }
+                    $toInt: { $substr: ["$_id", 11, 2] }
                 }
             }
         },
         {
-            "$sort": {
-                "_id": 1
+            $project: {
+                _id: 1,
+                power: 1,
+                hour: 1,
             }
         },
         {
-            "$project": {
-                _id: 1,
-                energy: 1,
-                hour: 1
+            $sort: {
+                _id: 1
+            }
+        }
+    ];
+
+    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+        function (err, db) {
+            if (err) throw err;
+            var dbo = db.db(databaseName);
+            dbo.collection('solar').aggregate(aggregate).toArray().then((docs) => {
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, power: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
+            });
+        }
+    );
+});
+
+app.get('/power/apis_per_hr/pea/all', async (req, res) => {
+    var allDevicesPowerInEachHour = [];
+    try {
+        for (var device of systemDevices) {
+            if (device.startsWith("MDB") || device.startsWith("B")) {
+                var response = await axios.get(`http://127.0.0.1:${port}/power/apis_per_hr/pea?device=${device}`);
+                allDevicesPowerInEachHour.push(response.data);
+            }
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    var solarAllPowerInEachHour = [];
+
+    for (var i = 0; i < 24; i++) {
+        var allPower = 0;
+        var _id;
+        for (var eachDevicePowerInEachHour of allDevicesPowerInEachHour) {
+            _id = eachDevicePowerInEachHour[i]._id;
+            allPower += eachDevicePowerInEachHour[i].power;
+        }
+        solarAllPowerInEachHour.push({ _id: _id, power: allPower, hour: i });
+    }
+
+    res.send(solarAllPowerInEachHour);
+});
+
+app.get('/power/apis_per_hr/pea/', (req, res) => {
+    var device = req.query.device;
+
+    var aggregate = [
+        {
+            $match: {
+                $and: [
+                    { "createdAt": { $gte: new Date(today), $lt: new Date(tomorrow) } },
+                    { "deviceName": device }
+                ],
             }
         },
+        {
+            $group: {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "hour",
+                        binSize: 1
+                    }
+                },
+                "power": {
+                    $max: "$apis"
+                },
+            }
+        },
+        {
+            $addFields: {
+                "hour": {
+                    $toInt: { $substr: ["$_id", 11, 2] }
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                power: 1,
+                hour: 1,
+            }
+        },
+        {
+            $sort: {
+                _id: 1
+            }
+        }
     ]
 
     MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
         function (err, db) {
             if (err) throw err;
             var dbo = db.db(databaseName);
-            dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
+            dbo.collection('meter').aggregate(aggregate).toArray().then((docs) => {
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, power: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
+            });
+        }
+    );
+});
+
+app.get('/energy/all', async (req, res) => {
+    var allDevicesEnergyInEachHour = [];
+    try {
+        var allPEAEnergyResponse = await axios.get(`http://127.0.0.1:${port}/energy/all_energy_per_hr/pea/all`);
+        var allSolarEnergyResponse = await axios.get(`http://127.0.0.1:${port}/energy/all_energy_per_hr/solar/all`);
+        allDevicesEnergyInEachHour.push(allPEAEnergyResponse.data);
+        allDevicesEnergyInEachHour.push(allSolarEnergyResponse.data);
+
+    } catch (error) {
+        console.error(error);
+    }
+
+    console.log(allDevicesEnergyInEachHour);
+
+    var allDevicesInEachHourToResponse = [];
+
+    for (var i = 0; i < 24; i++) {
+        var allEnergy = 0;
+        var _id;
+        for (var eachDeviceEnergyInEachHour of allDevicesEnergyInEachHour) {
+            console.log(eachDeviceEnergyInEachHour);
+            _id = eachDeviceEnergyInEachHour[i]._id;
+            allEnergy += eachDeviceEnergyInEachHour[i].energy;
+        }
+        allDevicesInEachHourToResponse.push({ _id: _id, energy: allEnergy, hour: i });
+    }
+
+    res.send(allDevicesInEachHourToResponse);
+});
+
+app.get('/energy/all_energy_per_hr/solar/all', async (req, res) => {
+    var allDevicesEnergyInEachHour = [];
+    try {
+        for (var device of systemDevices) {
+            if (device.startsWith('Solar')) {
+                var response = await axios.get(`http://127.0.0.1:${port}/energy/all_energy_per_hr/solar?device=${device}`);
+                allDevicesEnergyInEachHour.push(response.data);
+            }
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    var solarAllEnergyInEachHour = [];
+
+    for (var i = 0; i < 24; i++) {
+        var allEnergy = 0;
+        var _id;
+        for (var eachDeviceEnergyInEachHour of allDevicesEnergyInEachHour) {
+            _id = eachDeviceEnergyInEachHour[i]._id;
+            allEnergy += eachDeviceEnergyInEachHour[i].energy;
+        }
+        solarAllEnergyInEachHour.push({ _id: _id, energy: allEnergy, hour: i });
+    }
+
+    res.send(solarAllEnergyInEachHour);
+});
+
+app.get('/energy/all_energy_per_hr/solar/', (req, res) => {
+    var device = req.query.device;
+
+    var aggregate = [
+        {
+            $match: {
+                $and: [
+                    { "createdAt": { $gte: new Date(today), $lt: new Date(tomorrow) } },
+                    { "deviceName": device }
+                ],
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "hour",
+                        binSize: 1
+                    }
+                },
+                "firstAE": { $first: "$ae" },
+                "lastAE": { $last: "$ae" }
+            }
+        },
+        {
+            $addFields: {
+                "energy": {
+                    $subtract: ["$lastAE", "$firstAE"],
+                }
+            }
+        },
+        {
+            $addFields: {
+                "hour": {
+                    $toInt: { $substr: ["$_id", 11, 2] }
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                energy: 1,
+                hour: 1,
+            }
+        },
+        {
+            $sort: {
+                _id: 1
+            }
+        }
+    ];
+
+    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+        function (err, db) {
+            if (err) throw err;
+            var dbo = db.db(databaseName);
+            dbo.collection('solar').aggregate(aggregate).toArray().then((docs) => {
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, energy: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
+            });
+        }
+    );
+});
+
+app.get('/energy/all_energy_per_hr/pea/all', async (req, res) => {
+    var allDevicesEnergyInEachHour = [];
+    try {
+        for (var device of systemDevices) {
+            if (device.startsWith("MDB") || device.startsWith("B")) {
+                var response = await axios.get(`http://127.0.0.1:${port}/energy/all_energy_per_hr/pea?device=${device}`);
+                allDevicesEnergyInEachHour.push(response.data);
+            }
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    console.log(allDevicesEnergyInEachHour);
+
+    var peaAllEnergyInEachHour = [];
+
+    for (var i = 0; i < 24; i++) {
+        var allEnergy = 0;
+        var _id;
+        for (var eachDeviceEnergyInEachHour of allDevicesEnergyInEachHour) {
+            _id = eachDeviceEnergyInEachHour[i]._id;
+            allEnergy += eachDeviceEnergyInEachHour[i].energy;
+        }
+        peaAllEnergyInEachHour.push({ _id: _id, energy: allEnergy, hour: i });
+    }
+
+    res.send(peaAllEnergyInEachHour);
+});
+
+app.get('/energy/all_energy_per_hr/pea/', (req, res) => {
+    var device = req.query.device;
+
+    var aggregate = [
+        {
+            $match: {
+                $and: [
+                    { "createdAt": { $gte: new Date(today), $lt: new Date(tomorrow) } },
+                    { "deviceName": device }
+                ],
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "hour",
+                        binSize: 1
+                    }
+                },
+                "firstAE": { $first: "$ae" },
+                "lastAE": { $last: "$ae" }
+            }
+        },
+        {
+            $addFields: {
+                "energy": {
+                    $subtract: ["$lastAE", "$firstAE"],
+                }
+            }
+        },
+        {
+            $addFields: {
+                "hour": {
+                    $toInt: { $substr: ["$_id", 11, 2] }
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                energy: 1,
+                hour: 1,
+            }
+        },
+        {
+            $sort: {
+                _id: 1
+            }
+        }
+    ];
+
+    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+        function (err, db) {
+            if (err) throw err;
+            var dbo = db.db(databaseName);
+            dbo.collection('meter').aggregate(aggregate).toArray().then((docs) => {
                 if (docs.length === 24) {
                     res.send(docs)
                 }
@@ -610,61 +1014,6 @@ app.get('/controllers_amount/', (req, res) => {
             });
         }
     );
-});
-
-app.get('/alarm', async (req, res) => {
-    try {
-        var alarmPoint = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                            <values>
-                                <variable>
-                                    <id>CoPro2.DESCRIPTION</id>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.HUM</id>
-                                    <value>42.750000</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.NAME</id>
-                                    <value>CoPro2</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.STATUS</id>
-                                    <value>1.000000</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.Smoke</id>
-                                    <value>0.000000</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.Temp</id>
-                                    <value>26.049999</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.Temp1</id>
-                                    <value>27.325001</value>
-                                </variable>
-                                <variable>
-                                    <id>CoPro2.VDTTM</id>
-                                    <value>05122021053650</value>
-                                </variable>
-                            </values>`:
-            await axios.get(GET_ALARM_POINT);
-        xml2js.parseString(!isRealDevice ? alarmPoint : alarmPoint.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-
-            var humidity = parseFloat(json.values.variable[1].value[0]);
-            var temperature = parseFloat(json.values.variable[5].value[0]);
-            var smokeStatus = parseFloat(json.values.variable[4].value[0]) == 0 ? 'Normal' : 'Alarm';
-            var sentData = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
-            res.send(sentData);
-        });
-    } catch (error) {
-        console.error(error);
-    }
 });
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ API Server set up ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
@@ -771,12 +1120,6 @@ io.on('connection', (socket) => {
         }, 3000);
     });
 
-    socket.on('all_energy/today', (message) => {
-        setInterval(async () => {
-            socket.emit('all_energy/today', await allEnergyToday());
-        }, 3000);
-    });
-
     socket.on('devices-status=online', (message) => {
         setInterval(async () => {
             socket.emit('devices-status=online', await onlineDevices());
@@ -786,30 +1129,6 @@ io.on('connection', (socket) => {
     socket.on('devices-status=offline', (message) => {
         setInterval(async () => {
             socket.emit('devices-status=offline', await offlineDevices());
-        }, 3000);
-    });
-
-    socket.on('pea/today', (message) => {
-        setInterval(async () => {
-            socket.emit('pea/today', await peaEnergyToday());
-        }, 3000);
-    });
-
-    socket.on('pea_devices/all_energy/today', (message) => {
-        setInterval(async () => {
-            socket.emit('pea_devices/all_energy/today', await eachDevicesEnergyToday());
-        }, 3000);
-    });
-
-    socket.on('solar/all_energy/today', (message) => {
-        setInterval(async () => {
-            socket.emit('solar/all_energy/today', await eachSolarEnergyToday());
-        }, 3000);
-    });
-
-    socket.on('solar/today', (message) => {
-        setInterval(async () => {
-            socket.emit('solar/today', await solarEnergyToday());
         }, 3000);
     });
 
@@ -829,6 +1148,103 @@ io.on('connection', (socket) => {
         setInterval(async () => {
             socket.emit('alarm', await getAlarmEvent());
         }, 3000)
+    });
+
+    // energy
+
+    socket.on('all_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('all_energy/today', await allEnergyToday());
+        }, 3000);
+    });
+
+
+    socket.on('total_pea_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('total_pea_energy/today', await peaEnergyToday());
+        }, 3000);
+    });
+
+    socket.on('pea_devices/all_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('pea_devices/all_energy/today', await eachDevicesEnergyToday());
+        }, 3000);
+    });
+
+    socket.on('total_solar_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('total_solar_energy/today', await solarEnergyToday());
+        }, 3000);
+    });
+
+    socket.on('solar/all_energy/today', (message) => {
+        setInterval(async () => {
+            socket.emit('solar/all_energy/today', await eachSolarEnergyToday());
+        }, 3000);
+    });
+
+    // power
+
+    socket.on('all_power/today', async () => {
+        setInterval(async () => {
+            socket.emit('all_power/today', await allPowerToday());
+        }, 3000)
+    });
+
+    socket.on('total_pea_power/today', (message) => {
+        setInterval(async () => {
+            socket.emit('total_pea_power/today', await peaPowerToday());
+        }, 3000);
+    });
+
+    socket.on('pea_devices/all_power/today', (message) => {
+        setInterval(async () => {
+            socket.emit('pea_devices/all_power/today', await eachDevicesPowerToday());
+        }, 3000);
+    });
+
+    socket.on('total_solar_power/today', (message) => {
+        setInterval(async () => {
+            socket.emit('total_solar_power/today', await solarPowerToday());
+        }, 3000);
+    });
+
+    socket.on('solar/all_power/today', (message) => {
+        setInterval(async () => {
+            socket.emit('solar/all_power/today', await eachSolarPowerToday());
+        }, 3000);
+    });
+
+    // MDB
+
+    socket.on('mdb1/general_info', (message) => {
+        setInterval(async () => {
+            socket.emit('mdb1/general_info', await getMeterInfo('MDB1'));
+        }, 3000);
+    });
+
+    socket.on('mdb2/general_info', (message) => {
+        setInterval(async () => {
+            socket.emit('mdb2/general_info', await getMeterInfo('MDB2'));
+        }, 3000);
+    });
+
+    socket.on('b1/general_info', (message) => {
+        setInterval(async () => {
+            socket.emit('b1/general_info', await getMeterInfo('B1'));
+        }, 3000);
+    });
+
+    socket.on('mdb4/general_info', (message) => {
+        setInterval(async () => {
+            socket.emit('mdb4/general_info', await getMeterInfo('MDB4'));
+        }, 3000);
+    });
+
+    socket.on('mdb5/general_info', (message) => {
+        setInterval(async () => {
+            socket.emit('mdb5/general_info', await getMeterInfo('MDB5'));
+        }, 3000);
     });
 });
 
@@ -870,7 +1286,7 @@ var todaySavedCostAsBaht = async () => {
 var allEnergyToday = async () => {
     var todayAllEnergyAggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: new Date(today),
                     $lt: new Date(tomorrow),
@@ -878,40 +1294,23 @@ var allEnergyToday = async () => {
             }
         },
         {
-            "$group": {
+            $group: {
                 _id: "$deviceName",
-                "energy": {
-                    "$last": "$ae"
+                "firstAE": {
+                    $first: "$ae"
+                },
+                "lastAE": {
+                    $last: "$ae"
                 }
             }
         },
         {
-            "$project": {
-                _id: 0,
-                energy: 1,
-            }
-        },
-    ];
-
-    var yesterdayAllEnergyAggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(yesterday),
-                    $lt: new Date(today),
-                }
+            $addFields: {
+                "energy": { $subtract: ["$lastAE", "$firstAE"] }
             }
         },
         {
-            "$group": {
-                _id: "$deviceName",
-                "energy": {
-                    "$last": "$ae"
-                }
-            }
-        },
-        {
-            "$project": {
+            $project: {
                 _id: 0,
                 energy: 1,
             }
@@ -920,27 +1319,21 @@ var allEnergyToday = async () => {
 
     var db = client.db(databaseName);
     const collection = db.collection(allDevicesCollection);
-    const todayResult = await collection.aggregate(todayAllEnergyAggregate).toArray();
-    const yesterdayResult = await collection.aggregate(yesterdayAllEnergyAggregate).toArray();
-    var todayAllEnergy = 0;
-    var yesterdayAllEnergy = 0;
+    const result = await collection.aggregate(todayAllEnergyAggregate).toArray();
+    var allEnergyToday = 0;
 
-    for (var result of todayResult) {
-        todayAllEnergy += result.energy;
+    for (var eachDevice of result) {
+        allEnergyToday += eachDevice.energy;
     }
 
-    for (var result of yesterdayResult) {
-        yesterdayAllEnergy += result.energy;
-    }
-
-    var allEnergyToday = todayAllEnergy - yesterdayAllEnergy;
     return { energy: allEnergyToday };
+
 };
 
 var peaEnergyToday = async () => {
     var todayPEAEnergyAggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: new Date(today),
                     $lt: new Date(tomorrow),
@@ -948,74 +1341,42 @@ var peaEnergyToday = async () => {
             }
         },
         {
-            "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1
-                    }
-                },
+            $group: {
+                _id: "$deviceName",
+                "firstAE": { $first: "$ae" },
+                "lastAE": { $last: "$ae" },
+            }
+        },
+        {
+            $addFields: {
                 "energy": {
-                    "$sum": "$ae"
+                    $subtract: ["$lastAE", "$firstAE"],
                 }
             }
         },
         {
-            "$project": {
+            $project: {
                 _id: 0,
                 energy: 1,
             }
-        },
-        {
-            "$limit": 1
         },
     ];
-    var yesterdayPEAEnergyAggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(yesterday),
-                    $lt: new Date(today),
-                }
-            }
-        },
-        {
-            "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1
-                    }
-                },
-                "energy": {
-                    "$sum": "$ae"
-                }
-            }
-        },
-        {
-            "$project": {
-                _id: 0,
-                energy: 1,
-            }
-        },
-        {
-            "$limit": 1
-        },
-    ]
     var db = client.db(databaseName);
     const collection = db.collection('meter');
-    const todayResult = await collection.aggregate(todayPEAEnergyAggregate).toArray();
-    const yesterdayResult = await collection.aggregate(yesterdayPEAEnergyAggregate).toArray();
-    var todayPEAAllEnergy = todayResult[0].energy - yesterdayResult[0].energy;
+    const result = await collection.aggregate(todayPEAEnergyAggregate).toArray();
+    var todayPEAAllEnergy = 0;
+
+    for (var device of result) {
+        todayPEAAllEnergy += device.energy;
+    }
+
     return { energy: todayPEAAllEnergy };
 };
 
 var solarEnergyToday = async () => {
     var todaySolarEnergyAggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: new Date(today),
                     $lt: new Date(tomorrow),
@@ -1023,76 +1384,43 @@ var solarEnergyToday = async () => {
             }
         },
         {
-            "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1
-                    }
-                },
+            $group: {
+                _id: "$deviceName",
+                "firstAE": { $first: "$ae" },
+                "lastAE": { $last: "$ae" },
+            }
+        },
+        {
+            $addFields: {
                 "energy": {
-                    "$sum": "$ae"
+                    $subtract: ["$lastAE", "$firstAE"],
                 }
             }
         },
         {
-            "$project": {
+            $project: {
                 _id: 0,
                 energy: 1,
             }
-        },
-        {
-            "$limit": 1
-        },
-    ];
-
-    var yesterdaySolarEnergyAggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(yesterday),
-                    $lt: new Date(today),
-                }
-            }
-        },
-        {
-            "$group": {
-                _id: {
-                    $dateTrunc: {
-                        date: "$createdAt",
-                        unit: "day",
-                        binSize: 1
-                    }
-                },
-                "energy": {
-                    "$sum": "$ae"
-                }
-            }
-        },
-        {
-            "$project": {
-                _id: 0,
-                energy: 1,
-            }
-        },
-        {
-            "$limit": 1
         },
     ];
 
     var db = client.db(databaseName);
     const collection = db.collection('solar');
-    const todayResult = await collection.aggregate(todaySolarEnergyAggregate).toArray();
-    const yesterdayResult = await collection.aggregate(yesterdaySolarEnergyAggregate).toArray();
-    var todaySolarEnergy = todayResult[0].energy - yesterdayResult[0].energy;
-    return { energy: todaySolarEnergy };
+    const result = await collection.aggregate(todaySolarEnergyAggregate).toArray();
+    var todaySolarAllEnergy = 0;
+
+    for (var device of result) {
+        todaySolarAllEnergy += device.energy;
+    }
+
+    return { energy: todaySolarAllEnergy };
 };
 
 var eachDevicesEnergyToday = async () => {
     var todayAllEnergyAggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: new Date(today),
                     $lt: new Date(tomorrow),
@@ -1100,60 +1428,43 @@ var eachDevicesEnergyToday = async () => {
             }
         },
         {
-            "$group": {
+            $group: {
                 _id: "$deviceName",
-                "energy": { "$last": "$ae" }
+                "oldestAE": { $first: "$ae" },
+                "newestAE": { $last: "$ae" }
             }
         },
         {
-            "$sort": {
-                _id: 1
-            }
-        }
-    ];
-
-    var yesterdayAllEnergyAggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(yesterday),
-                    $lt: new Date(today),
+            $addFields: {
+                "energy": {
+                    $subtract: [
+                        "$newestAE",
+                        "$oldestAE"
+                    ]
                 }
             }
         },
         {
-            "$group": {
-                _id: "$deviceName",
-                "energy": { "$last": "$ae" }
+            $sort: {
+                _id: 1
             }
         },
         {
-            "$sort": {
-                _id: 1
+            $project: {
+                _id: 1,
+                energy: 1,
             }
         }
     ];
 
     var db = client.db(databaseName);
     const collection = db.collection('meter');
-    const todayResult = await collection.aggregate(todayAllEnergyAggregate).toArray();
-    const yesterdayResult = await collection.aggregate(yesterdayAllEnergyAggregate).toArray();
-    var devicesEnergyToday = [];
-    var currentYesterdayResultCalculationIndex = 0;
-
-    for (result of todayResult) {
-        if (currentYesterdayResultCalculationIndex < yesterdayResult.length) {
-            const deviceEnergy = result.energy - yesterdayResult[currentYesterdayResultCalculationIndex].energy;
-            currentYesterdayResultCalculationIndex++;
-            devicesEnergyToday.push({ _id: result._id, energy: deviceEnergy });
-        }
-    }
-
+    const devicesEnergyToday = await collection.aggregate(todayAllEnergyAggregate).toArray();
     return devicesEnergyToday;
 };
 
 var eachSolarEnergyToday = async () => {
-    var todayAllEnergyAggregate = [
+    var todayNewestAllEnergyAggregate = [
         {
             "$match": {
                 "createdAt": {
@@ -1165,53 +1476,36 @@ var eachSolarEnergyToday = async () => {
         {
             "$group": {
                 _id: "$deviceName",
-                "energy": { "$last": "$ae" }
+                "oldestAE": { "$first": "$ae" },
+                "newestAE": { "$last": "$ae" }
             }
         },
         {
-            "$sort": {
-                _id: 1
-            }
-        }
-    ];
-
-    var yesterdayAllEnergyAggregate = [
-        {
-            "$match": {
-                "createdAt": {
-                    $gte: new Date(yesterday),
-                    $lt: new Date(today),
+            "$addFields": {
+                "energy": {
+                    "$subtract": [
+                        "$newestAE",
+                        "$oldestAE"
+                    ]
                 }
             }
         },
         {
-            "$group": {
-                _id: "$deviceName",
-                "energy": { "$last": "$ae" }
+            "$sort": {
+                _id: 1
             }
         },
         {
-            "$sort": {
-                _id: 1
+            "$project": {
+                _id: 1,
+                energy: 1,
             }
         }
     ];
 
     var db = client.db(databaseName);
     const collection = db.collection('solar');
-    const todayResult = await collection.aggregate(todayAllEnergyAggregate).toArray();
-    const yesterdayResult = await collection.aggregate(yesterdayAllEnergyAggregate).toArray();
-    var solarEnergyToday = [];
-    var currentYesterdayResultCalculationIndex = 0;
-
-    for (result of todayResult) {
-        if (currentYesterdayResultCalculationIndex < yesterdayResult.length) {
-            const solarEnergy = result.energy - yesterdayResult[currentYesterdayResultCalculationIndex].energy;
-            currentYesterdayResultCalculationIndex++;
-            solarEnergyToday.push({ _id: result._id, energy: solarEnergy });
-        }
-    }
-
+    const solarEnergyToday = await collection.aggregate(todayNewestAllEnergyAggregate).toArray();
     return solarEnergyToday;
 };
 
@@ -1616,7 +1910,7 @@ var onPeakToday = async () => {
 
     var aggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: onPeakStartTime,
                     $lt: onPeakEndTime,
@@ -1624,20 +1918,20 @@ var onPeakToday = async () => {
             }
         },
         {
-            "$group": {
+            $group: {
                 _id: "$deviceName",
                 "firstAE": {
-                    "$first": "$ae"
+                    $first: "$ae"
                 },
                 "nowAE": {
-                    "$last": "$ae"
+                    $last: "$ae"
                 }
             }
         },
         {
             $addFields: {
                 "onPeak": {
-                    "$subtract": [
+                    $subtract: [
                         "$nowAE",
                         "$firstAE"
                     ]
@@ -1645,7 +1939,7 @@ var onPeakToday = async () => {
             }
         },
         {
-            "$project": {
+            $project: {
                 _id: 0,
                 onPeak: 1
             }
@@ -1701,7 +1995,7 @@ var offPeakToday = async () => {
             }
         },
         {
-            $addFields: {
+            "$addFields": {
                 "offPeak": {
                     "$subtract": [
                         "$nowAE",
@@ -1738,7 +2032,7 @@ var onPeakYesterday = async () => {
 
     var aggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: onPeakStartTime,
                     $lt: onPeakEndTime,
@@ -1746,20 +2040,20 @@ var onPeakYesterday = async () => {
             }
         },
         {
-            "$group": {
+            $group: {
                 _id: "$deviceName",
                 "firstAE": {
-                    "$first": "$ae"
+                    $first: "$ae"
                 },
                 "nowAE": {
-                    "$last": "$ae"
+                    $last: "$ae"
                 }
             }
         },
         {
             $addFields: {
                 "onPeak": {
-                    "$subtract": [
+                    $subtract: [
                         "$nowAE",
                         "$firstAE"
                     ]
@@ -1767,7 +2061,7 @@ var onPeakYesterday = async () => {
             }
         },
         {
-            "$project": {
+            $project: {
                 _id: 0,
                 onPeak: 1
             }
@@ -1804,7 +2098,7 @@ var offPeakYesterday = async () => {
 
     var aggregate = [
         {
-            "$match": {
+            $match: {
                 "createdAt": {
                     $gte: offPeakStartTime,
                     $lt: offPeakEndTime,
@@ -1812,20 +2106,20 @@ var offPeakYesterday = async () => {
             }
         },
         {
-            "$group": {
+            $group: {
                 _id: "$deviceName",
                 "firstAE": {
-                    "$first": "$ae"
+                    $first: "$ae"
                 },
                 "nowAE": {
-                    "$last": "$ae"
+                    $last: "$ae"
                 }
             }
         },
         {
             $addFields: {
                 "offPeak": {
-                    "$subtract": [
+                    $subtract: [
                         "$nowAE",
                         "$firstAE"
                     ]
@@ -1833,7 +2127,7 @@ var offPeakYesterday = async () => {
             }
         },
         {
-            "$project": {
+            $project: {
                 _id: 0,
                 offPeak: 1
             }
@@ -1852,7 +2146,7 @@ var offPeakYesterday = async () => {
 };
 
 var getAlarmEvent = async () => {
-    var sentData;
+    var alarmEvents;
     try {
         var alarmPoint = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                             <values>
@@ -1902,11 +2196,210 @@ var getAlarmEvent = async () => {
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`).value[0]) : 0;
             var smokeStatus = json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`) !== undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`).value[0]) === 0 ? 'Normal' : 'Alarm' : 'Normal';
-            // console.log({ humidity: humidity, temperature: temperature, smokeStatus: smokeStatus });
-            sentData = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
+            alarmEvents = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
         });
     } catch (error) {
         console.error(error);
     }
-    return sentData;
+    return alarmEvents;
 }
+
+var allPowerToday = async () => {
+    var todayAllPowerAggregate = [
+        {
+            $match: {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            $group: {
+                _id: "$deviceName",
+                "power": {
+                    $last: "$apis"
+                },
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                power: 1,
+            }
+        },
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection(allDevicesCollection);
+    const result = await collection.aggregate(todayAllPowerAggregate).toArray();
+    var allPowerToday = 0;
+
+    for (var device of result) {
+        allPowerToday += device.power;
+    }
+
+    return { power: allPowerToday };
+};
+
+var peaPowerToday = async () => {
+    var todayPEAPowerAggregate = [
+        {
+            $match: {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            $group: {
+                _id: "$deviceName",
+                "power": { $last: "$apis" },
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                power: 1,
+            }
+        },
+    ];
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const result = await collection.aggregate(todayPEAPowerAggregate).toArray();
+    var todayPEAAllPower = 0;
+
+    for (var device of result) {
+        todayPEAAllPower += device.power;
+    }
+
+    return { energy: todayPEAAllPower };
+};
+
+var solarPowerToday = async () => {
+    var todaySolarPowerAggregate = [
+        {
+            $match: {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            $group: {
+                _id: "$deviceName",
+                "power": { $first: "$apis" },
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                power: 1,
+            }
+        },
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('solar');
+    const result = await collection.aggregate(todaySolarPowerAggregate).toArray();
+    var todaySolarAllPower = 0;
+
+    for (var device of result) {
+        todaySolarAllPower += device.power;
+    }
+
+    return { energy: todaySolarAllPower };
+};
+
+var eachDevicesPowerToday = async () => {
+    var todayAllPowerAggregate = [
+        {
+            $match: {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            $group: {
+                _id: "$deviceName",
+                "power": { $last: "$apis" },
+            }
+        },
+        {
+            $sort: {
+                _id: 1
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                power: 1,
+            }
+        }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const devicesPowerToday = await collection.aggregate(todayAllPowerAggregate).toArray();
+    return devicesPowerToday;
+};
+
+var eachSolarPowerToday = async () => {
+    var todayNewestAllPowerAggregate = [
+        {
+            $match: {
+                "createdAt": {
+                    $gte: new Date(today),
+                    $lt: new Date(tomorrow),
+                }
+            }
+        },
+        {
+            $group: {
+                _id: "$deviceName",
+                power: { $last: "$apis" },
+            }
+        },
+        {
+            $sort: {
+                _id: 1
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                power: 1,
+            }
+        }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('solar');
+    const solarPowerToday = await collection.aggregate(todayNewestAllPowerAggregate).toArray();
+    return solarPowerToday;
+};
+
+var getMeterInfo = async (deviceName) => {
+    var getInfoAggregate = [
+        { $match: { "deviceName": deviceName } },
+        { $sort: { "createdAt": -1 } },
+        { $limit: 1 }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const latestInfo = await collection.aggregate(getInfoAggregate).toArray();
+
+    var meterInfo = { powerFactor: latestInfo[0].pfis, frequency: latestInfo[0].fre,
+                        vAB: latestInfo[0].vi12, vAC: latestInfo[0].vi31, vBC: latestInfo[0].vi23,
+                        vAL: latestInfo[0].vi1, vBL: latestInfo[0].vi2, vCL: latestInfo[0].vi3,
+                        currentA: latestInfo[0].ai1, currentB: latestInfo[0].ai2, currentC: latestInfo[0].ai3,
+                        THDvA: latestInfo[0].thdv1, THDvB: latestInfo[0].thdv2, THDvC: latestInfo[0].thdv3,
+                        THDiA: latestInfo[0].thdi1, THDiB: latestInfo[0].thdi2, THDiC: latestInfo[0].thdi3 }
+
+    return meterInfo;
+};
