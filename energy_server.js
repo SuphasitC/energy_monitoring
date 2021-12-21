@@ -342,7 +342,6 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
         const date = new Date().toISOString()
         const createdAt = new Date(date);
         cleansingJSON = { ...cleansingJSON, createdAt };
-        console.log(`🏀🏀🏀🏀🏀 cleansingJSON = ${cleansingJSON !== null ? JSON.stringify(cleansingJSON) : null} 🏀🏀🏀🏀🏀`);
         if (systemDevices.includes(deviceId) && (deviceId != 'CoPro1' || deviceId != 'CoPro2')) {
             insertObjToDatabase(cleansingJSON);
             res.send(json);
@@ -368,6 +367,112 @@ app.get('/', (req, res) => {
     res.send('Energy Monitoring - API')
 });
 
+app.get('/power/', async (req, res) => {
+    var date = req.query.date;
+    var filterValue = req.query.filterValue;
+    var acceptableDate = ['today', 'yesterday'];
+    var acceptableFilterValue = ['max', 'min', 'average'];
+    var startDate = date === 'today' ? new Date(today) : new Date(yesterday);
+    var endDate = date === 'today' ? new Date(tomorrow) : new Date(today);
+
+    var calculationType = {};
+
+    switch (filterValue) {
+        case 'max':
+            calculationType = { $max: "$apis" };
+            break;
+        case 'min':
+            calculationType = { $min: "$apis" };
+            break;
+        case 'average':
+            calculationType = { $avg: "$apis" };
+            break;
+        default:
+            calculationType = { $max: "$apis" };
+            break;
+    }
+
+    var powerAggregate = [
+        { $match: { "createdAt": { $gte: startDate, $lt: endDate } } },
+        {
+            $group: {
+                _id: {
+                    "date": {
+                        $dateTrunc: {
+                            date: "$createdAt",
+                            unit: "hour",
+                            binSize: 1
+                        }
+                    },
+                    "deviceName": "$deviceName",
+                },
+                "power": calculationType
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    $dateTrunc: {
+                        date: "$_id.date",
+                        unit: "hour",
+                        binSize: 1
+                    }
+                },
+                "power": {
+                    $sum: "$power"
+                }
+            }
+        },
+        {
+            $addFields: {
+                "hour": {
+                    $toInt: { $substr: ["$_id", 11, 2] }
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                power: 1,
+                hour: 1,
+            }
+        },
+        {
+            $sort: { "_id": 1 }
+        }
+    ];
+
+    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+        function (err, db) {
+            if (err) throw err;
+            var dbo = db.db(databaseName);
+            dbo.collection(allDevicesCollection).aggregate(powerAggregate).toArray().then((docs) => {
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, power: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
+            });
+        }
+    );
+});
+
 app.get('/power/all', async (req, res) => {
     var allDevicesPowerInEachHour = [];
     try {
@@ -380,15 +485,12 @@ app.get('/power/all', async (req, res) => {
         console.error(error);
     }
 
-    console.log(allDevicesPowerInEachHour);
-
     var allDevicesInEachHourToResponse = [];
 
     for (var i = 0; i < 24; i++) {
         var allPower = 0;
         var _id;
         for (var eachDevicePowerInEachHour of allDevicesPowerInEachHour) {
-            console.log(eachDevicePowerInEachHour);
             _id = eachDevicePowerInEachHour[i]._id;
             allPower += eachDevicePowerInEachHour[i].power;
         }
@@ -454,7 +556,7 @@ app.get('/power/apis_per_hr/', (req, res) => {
                 _id: 1
             }
         }
-    ]
+    ];
 
     MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
         function (err, db) {
@@ -618,6 +720,8 @@ app.get('/power/apis_per_hr/pea/all', async (req, res) => {
         solarAllPowerInEachHour.push({ _id: _id, power: allPower, hour: i });
     }
 
+    console.log(solarAllPowerInEachHour);
+
     res.send(solarAllPowerInEachHour);
 });
 
@@ -699,6 +803,95 @@ app.get('/power/apis_per_hr/pea/', (req, res) => {
     );
 });
 
+app.get('/energy/', async (req, res) => {
+    var date = req.query.date;
+    var acceptableDate = ['today', 'yesterday'];
+    var startDate = date === 'today' ? new Date(today) : new Date(yesterday);
+    var endDate = date === 'today' ? new Date(tomorrow) : new Date(today);
+
+    var energyAggregate = [
+        { $match: { "createdAt": { $gte: startDate, $lt: endDate } } },
+        {
+            $group: {
+                _id: {
+                    "date": {
+                        $dateTrunc: {
+                            date: "$createdAt",
+                            unit: "hour",
+                            binSize: 1
+                        }
+                    },
+                    "deviceName": "$deviceName",
+                },
+                "firstAE": { $first: "$ae" },
+                "lastAE": { $last: "$ae" },
+            }
+        },
+        { $addFields: { "energy": { $subtract: ["$lastAE", "$firstAE"] } } },
+        {
+            $group: {
+                _id: {
+                    $dateTrunc: {
+                        date: "$_id.date",
+                        unit: "hour",
+                        binSize: 1
+                    }
+                },
+                "energy": {
+                    $sum: "$energy"
+                }
+            }
+        },
+        {
+            $addFields: {
+                "hour": {
+                    $toInt: { $substr: ["$_id", 11, 2] }
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                energy: 1,
+                hour: 1,
+            }
+        },
+        {
+            $sort: { "_id": 1 }
+        }
+    ];
+
+    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+        function (err, db) {
+            if (err) throw err;
+            var dbo = db.db(databaseName);
+            dbo.collection(allDevicesCollection).aggregate(energyAggregate).toArray().then((docs) => {
+                if (docs.length === 24) {
+                    res.send(docs)
+                }
+                else {
+                    var completeDocs = docs;
+                    var hourInDB = [];
+                    docs.forEach((time) => {
+                        hourInDB.push(time.hour);
+                    });
+                    for (var i = 0; i < 24; i++) {
+                        if (!hourInDB.includes(i)) {
+                            var tempDateObj = new Date(today);
+                            tempDateObj.setHours(tempDateObj.getHours() + i);
+                            var tempDate = tempDateObj.toISOString();
+                            var doc = { _id: tempDate, energy: 0, hour: i };
+                            completeDocs.push(doc);
+                        }
+                    }
+                    completeDocs.sort(compareHr);
+                    res.send(completeDocs);
+                }
+            });
+        }
+    );
+});
+
 app.get('/energy/all', async (req, res) => {
     var allDevicesEnergyInEachHour = [];
     try {
@@ -711,15 +904,12 @@ app.get('/energy/all', async (req, res) => {
         console.error(error);
     }
 
-    console.log(allDevicesEnergyInEachHour);
-
     var allDevicesInEachHourToResponse = [];
 
     for (var i = 0; i < 24; i++) {
         var allEnergy = 0;
         var _id;
         for (var eachDeviceEnergyInEachHour of allDevicesEnergyInEachHour) {
-            console.log(eachDeviceEnergyInEachHour);
             _id = eachDeviceEnergyInEachHour[i]._id;
             allEnergy += eachDeviceEnergyInEachHour[i].energy;
         }
@@ -854,7 +1044,7 @@ app.get('/energy/all_energy_per_hr/pea/all', async (req, res) => {
         console.error(error);
     }
 
-    console.log(allDevicesEnergyInEachHour);
+    // console.log(allDevicesEnergyInEachHour);
 
     var peaAllEnergyInEachHour = [];
 
@@ -2290,7 +2480,7 @@ var solarPowerToday = async () => {
         {
             $group: {
                 _id: "$deviceName",
-                "power": { $first: "$apis" },
+                "power": { $last: "$apis" },
             }
         },
         {
@@ -2394,12 +2584,14 @@ var getMeterInfo = async (deviceName) => {
     const collection = db.collection('meter');
     const latestInfo = await collection.aggregate(getInfoAggregate).toArray();
 
-    var meterInfo = { powerFactor: latestInfo[0].pfis, frequency: latestInfo[0].fre,
-                        vAB: latestInfo[0].vi12, vAC: latestInfo[0].vi31, vBC: latestInfo[0].vi23,
-                        vAL: latestInfo[0].vi1, vBL: latestInfo[0].vi2, vCL: latestInfo[0].vi3,
-                        currentA: latestInfo[0].ai1, currentB: latestInfo[0].ai2, currentC: latestInfo[0].ai3,
-                        THDvA: latestInfo[0].thdv1, THDvB: latestInfo[0].thdv2, THDvC: latestInfo[0].thdv3,
-                        THDiA: latestInfo[0].thdi1, THDiB: latestInfo[0].thdi2, THDiC: latestInfo[0].thdi3 }
+    var meterInfo = {
+        powerFactor: latestInfo[0].pfis, frequency: latestInfo[0].fre,
+        vAB: latestInfo[0].vi12, vAC: latestInfo[0].vi31, vBC: latestInfo[0].vi23,
+        vAL: latestInfo[0].vi1, vBL: latestInfo[0].vi2, vCL: latestInfo[0].vi3,
+        currentA: latestInfo[0].ai1, currentB: latestInfo[0].ai2, currentC: latestInfo[0].ai3,
+        THDvA: latestInfo[0].thdv1, THDvB: latestInfo[0].thdv2, THDvC: latestInfo[0].thdv3,
+        THDiA: latestInfo[0].thdi1, THDiB: latestInfo[0].thdi2, THDiC: latestInfo[0].thdi3
+    }
 
     return meterInfo;
 };
