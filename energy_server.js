@@ -1533,6 +1533,12 @@ io.on('connection', (socket) => {
         }, 3000);
     });
 
+    socket.on('devices/all', (message) => {
+        setInterval(async () => {
+            socket.emit('devices/all', await getDevicesInfo());
+        }, 3000);
+    });
+
     // power
 
     socket.on('all_power/today', async () => {
@@ -2754,4 +2760,22 @@ var getMeterInfo = async (deviceName) => {
     }
 
     return meterInfo;
+};
+
+var getDevicesInfo = async () => {
+    var getDevicesInfoAggregate = [
+        {
+            $group: {
+                _id: "$deviceName",
+                status: { $last: "$status" }
+            },
+        },
+        { $sort: { _id: 1 } }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection(allDevicesCollection);
+    const devicesInfo = await collection.aggregate(getDevicesInfoAggregate).toArray();
+
+    return devicesInfo;
 };
