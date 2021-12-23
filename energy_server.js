@@ -1369,6 +1369,84 @@ app.get('/energy/all_energy_per_hr/pea/', async (req, res) => {
     );
 });
 
+app.get('/com_devices/devices_status_amount/history', (req, res) => {
+    var dateOfPrevious7day = new Date();
+    dateOfPrevious7day.setDate(dateOfPrevious7day.getDate() - 6);
+    var previous7dayWithoutOffset = dateOfPrevious7day.toISOString();
+    previous7dayWithoutOffset = previous7dayWithoutOffset.substring(0, 10);
+    var previous7dayInstance = new Date(previous7dayWithoutOffset);
+    previous7dayInstance.setHours(previous7dayInstance.getHours() - 7);
+    var previous7day = previous7dayInstance.toISOString();
+
+    var sentData = [];
+
+    var aggregate = [
+        {
+            $match: {
+                $and: [{ "createdAt": { $gte: new Date(previous7day), $lt: new Date(tomorrow), } }, { "status": DEVICE_OFFLINE }]
+            }
+        },
+        {
+            $group: {
+                "_id": {
+                    $dateTrunc: {
+                        date: "$createdAt",
+                        unit: "day",
+                        binSize: 1
+                    }
+                },
+                "devicesName": {
+                    $addToSet: "$deviceName"
+                }
+            }
+        },
+    ];
+
+    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
+        function (err, db) {
+            if (err) throw err;
+            var dbo = db.db(databaseName);
+            dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
+                if (docs.length === 0) {
+                    for (var i = 0; i < 7; i++) {
+                        var tempDate = new Date();
+                        tempDate.setDate(tempDate.getDate() - (6 - i));
+                        var tempDateWithoutOffset = tempDate.toISOString();
+                        tempDateWithoutOffset = tempDateWithoutOffset.substring(0, 10);
+                        var tempDate = new Date(tempDateWithoutOffset);
+                        sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: 0, onlineDevices: systemDevices.length });
+                    }
+                    res.send(sentData);
+                }
+                else {
+                    var dateFromAggregate = [];
+                    docs.forEach((doc) => {
+                        var date = parseInt(doc._id.substring(8, 10));
+                        dateFromAggregate.push(date);
+                    });
+                    for (var i = 0; i < 7; i++) {
+                        var tempDate = new Date();
+                        tempDate.setDate(tempDate.getDate() - (6 - i));
+                        var tempDateWithoutOffset = tempDate.toISOString();
+                        tempDateWithoutOffset = tempDateWithoutOffset.substring(0, 10);
+                        var tempDate = new Date(tempDateWithoutOffset);
+                        var calculatingDate = tempDateWithoutOffset.substring(8, 10);
+
+                        if (!dateFromAggregate.includes(calculatingDate)) {
+                            sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: 0, onlineDevices: systemDevices.length });
+                        } else {
+                            var foundItem = docs.find(item => parseInt(item._id.substring(8, 10)) == parseInt(calculatingDate));
+                            var offlineDevices = foundItem.devicesName.length;
+                            sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: offlineDevices, onlineDevices: systemDevices.length - offlineDevices });
+                        }
+                    }
+                    res.send(sentData);
+                }
+            });
+        }
+    );
+});
+
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Web Socket ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
 io.on('connection', (socket) => {
