@@ -35,6 +35,100 @@ var getVariableValue = (deviceId) => `${powerUrl}/services/chargePointsInterface
 const DEVICE_ONLINE = 1;
 const DEVICE_OFFLINE = 34;
 
+
+/* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ API Server set up ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
+
+var systemDevices = [];
+var isRealDevice = false;
+
+var dateObj = new Date();
+var todayWithoutOffset = dateObj.toISOString();
+todayWithoutOffset = todayWithoutOffset.substring(0, 10);
+var todayInstance = new Date(todayWithoutOffset);
+todayInstance.setHours(todayInstance.getHours() - 7);
+var today = todayInstance.toISOString();
+
+var dateOfTomorrow = new Date();
+dateOfTomorrow.setDate(dateOfTomorrow.getDate() + 1);
+var tomorrowWithoutOffset = dateOfTomorrow.toISOString();
+tomorrowWithoutOffset = tomorrowWithoutOffset.substring(0, 10);
+var tomorrowInstance = new Date(tomorrowWithoutOffset);
+tomorrowInstance.setHours(tomorrowInstance.getHours() - 7);
+var tomorrow = tomorrowInstance.toISOString();
+
+var dateOfYesterday = new Date();
+dateOfYesterday.setDate(dateOfYesterday.getDate() - 1);
+var yesterdayWithoutOffset = dateOfYesterday.toISOString();
+yesterdayWithoutOffset = yesterdayWithoutOffset.substring(0, 10);
+var yesterdayInstance = new Date(yesterdayWithoutOffset);
+yesterdayInstance.setHours(yesterdayInstance.getHours() - 7);
+var yesterday = yesterdayInstance.toISOString();
+
+var databaseName = 'energy-monitoring';
+var allDevicesCollection = 'all';
+
+const ON_PEAK_COST_PER_UNIT = 4.1839;
+const OFF_PEAK_COST_PER_UNIT = 2.6037;
+
+const SUNDAY = 0;
+const MONDAY = 1;
+const TUESDAY = 2;
+const WEDNESDAY = 3;
+const THURSDAY = 4;
+const FRIDAY = 5;
+const SATURDAY = 6;
+
+
+var setIsRealDevices = (isReal) => {
+    isRealDevice = isReal;
+}
+
+var getSystemDevices = async () => {
+    try {
+        var response = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                            <devices>
+                                <id>MDB1</id>
+                                <id>MDB2</id>
+                                <id>MDB4</id>
+                                <id>MDB5</id>
+                                <id>Solar1</id>
+                                <id>Solar2</id>
+                                <id>Solar3</id>
+                            </devices>`:
+            await axios.get(GET_DEVICES_PATH);
+        xml2js.parseString(!isRealDevice ? response : response.data, (err, result) => {
+            if (err) {
+                throw err;
+            }
+            const jsonString = JSON.stringify(result, null, 4);
+            var json = JSON.parse(jsonString);
+            if (systemDevices !== []) {
+                json.devices.id.forEach((device) => {
+                    if ((device.startsWith("MDB") && !device.endsWith("Care")) || device.startsWith("B1") || device.startsWith("Solar")) {
+                        systemDevices.push(device);
+                        console.log(`${device} is added to systemDevices list.`);
+                    }
+                });
+            }
+        });
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+var client;
+
+app.listen(port, async () => {
+    setIsRealDevices(true);
+    getSystemDevices();
+    client = await MongoClient.connect(mongoUrl);
+    console.log('Fetch device from:' + GET_DEVICES_PATH);
+    console.log(`Energy Monitoring API is listening on port ${port}.`);
+    console.log(`today =`, new Date(today));
+    console.log(`tomorrow =`, new Date(tomorrow));
+    console.log(`yesterday =`, new Date(yesterday));
+});
+
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Database Methods ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
 
 var insertObjToDatabase = (obj) => {
@@ -425,8 +519,17 @@ app.get('/power/', async (req, res) => {
         },
         {
             $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
+            }
+        },
+        {
+            $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -460,7 +563,8 @@ app.get('/power/', async (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
                             var doc = { _id: tempDate, power: 0, hour: i };
                             completeDocs.push(doc);
                         }
@@ -539,8 +643,17 @@ app.get('/power/apis_per_hr/', (req, res) => {
         },
         {
             $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
+            }
+        },
+        {
+            $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -576,7 +689,8 @@ app.get('/power/apis_per_hr/', (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
                             var doc = { _id: tempDate, power: 0, hour: i };
                             completeDocs.push(doc);
                         }
@@ -645,8 +759,17 @@ app.get('/power/apis_per_hr/solar/', (req, res) => {
         },
         {
             $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
+            }
+        },
+        {
+            $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -682,7 +805,8 @@ app.get('/power/apis_per_hr/solar/', (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
                             var doc = { _id: tempDate, power: 0, hour: i };
                             completeDocs.push(doc);
                         }
@@ -720,8 +844,6 @@ app.get('/power/apis_per_hr/pea/all', async (req, res) => {
         solarAllPowerInEachHour.push({ _id: _id, power: allPower, hour: i });
     }
 
-    console.log(solarAllPowerInEachHour);
-
     res.send(solarAllPowerInEachHour);
 });
 
@@ -753,8 +875,17 @@ app.get('/power/apis_per_hr/pea/', (req, res) => {
         },
         {
             $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
+            }
+        },
+        {
+            $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -790,7 +921,8 @@ app.get('/power/apis_per_hr/pea/', (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
                             var doc = { _id: tempDate, power: 0, hour: i };
                             completeDocs.push(doc);
                         }
@@ -844,8 +976,17 @@ app.get('/energy/', async (req, res) => {
         },
         {
             $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
+            }
+        },
+        {
+            $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -879,7 +1020,8 @@ app.get('/energy/', async (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
                             var doc = { _id: tempDate, energy: 0, hour: i };
                             completeDocs.push(doc);
                         }
@@ -947,8 +1089,36 @@ app.get('/energy/all_energy_per_hr/solar/all', async (req, res) => {
     res.send(solarAllEnergyInEachHour);
 });
 
-app.get('/energy/all_energy_per_hr/solar/', (req, res) => {
+app.get('/energy/all_energy_per_hr/solar/', async (req, res) => {
     var device = req.query.device;
+
+    var firstSolarAEOfTheDayAggregate = [
+        {
+            $match: {
+                $and: [
+                    { "createdAt": { $gte: new Date(today), $lt: new Date(tomorrow) } },
+                    { "deviceName": device }
+                ]
+            }
+        },
+        { $sort: { "ae": 1 } },
+        { $limit: 1 },
+        {
+            $project: {
+                "_id": 0,
+                "ae": 1
+            }
+        }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('solar');
+    const minSolarAEDocument = await collection.aggregate(firstSolarAEOfTheDayAggregate).toArray();
+    var firstSolarAEOfTheDay = 0;
+
+    if (minSolarAEDocument.length !== 0) {
+        firstSolarAEOfTheDay = minSolarAEDocument[0].ae;
+    }
 
     var aggregate = [
         {
@@ -974,15 +1144,22 @@ app.get('/energy/all_energy_per_hr/solar/', (req, res) => {
         },
         {
             $addFields: {
-                "energy": {
-                    $subtract: ["$lastAE", "$firstAE"],
-                }
+                "energy": { $subtract: ["$lastAE", firstSolarAEOfTheDay != 0 ? firstSolarAEOfTheDay : "$firstAE"] }
+            }
+        },
+        {
+            $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
             }
         },
         {
             $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -1011,6 +1188,7 @@ app.get('/energy/all_energy_per_hr/solar/', (req, res) => {
                 else {
                     var completeDocs = docs;
                     var hourInDB = [];
+                    var firstHourInDB = docs.length != 0 ? docs[0].hour : 0;
                     docs.forEach((time) => {
                         hourInDB.push(time.hour);
                     });
@@ -1018,12 +1196,18 @@ app.get('/energy/all_energy_per_hr/solar/', (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
-                            var doc = { _id: tempDate, energy: 0, hour: i };
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
+                            var doc = {};
+                            if (i > firstHourInDB) {
+                                doc = { _id: tempDate, energy: completeDocs[i - 1].energy, hour: i };
+                            } else {
+                                doc = { _id: tempDate, energy: 0, hour: i };
+                            }
                             completeDocs.push(doc);
+                            completeDocs.sort(compareHr);
                         }
                     }
-                    completeDocs.sort(compareHr);
                     res.send(completeDocs);
                 }
             });
@@ -1044,8 +1228,6 @@ app.get('/energy/all_energy_per_hr/pea/all', async (req, res) => {
         console.error(error);
     }
 
-    // console.log(allDevicesEnergyInEachHour);
-
     var peaAllEnergyInEachHour = [];
 
     for (var i = 0; i < 24; i++) {
@@ -1061,8 +1243,36 @@ app.get('/energy/all_energy_per_hr/pea/all', async (req, res) => {
     res.send(peaAllEnergyInEachHour);
 });
 
-app.get('/energy/all_energy_per_hr/pea/', (req, res) => {
+app.get('/energy/all_energy_per_hr/pea/', async (req, res) => {
     var device = req.query.device;
+
+    var firstPEAAEOfTheDayAggregate = [
+        {
+            $match: {
+                $and: [
+                    { "createdAt": { $gte: new Date(today), $lt: new Date(tomorrow) } },
+                    { "deviceName": device }
+                ]
+            }
+        },
+        { $sort: { "ae": 1 } },
+        { $limit: 1 },
+        {
+            $project: {
+                "_id": 0,
+                "ae": 1
+            }
+        }
+    ];
+
+    var db = client.db(databaseName);
+    const collection = db.collection('meter');
+    const minPEAAEDocument = await collection.aggregate(firstPEAAEOfTheDayAggregate).toArray();
+    var firstPEAAEOfTheDay = 0;
+
+    if (minPEAAEDocument.length !== 0) {
+        firstPEAAEOfTheDay = minPEAAEDocument[0].ae;
+    }
 
     var aggregate = [
         {
@@ -1088,15 +1298,22 @@ app.get('/energy/all_energy_per_hr/pea/', (req, res) => {
         },
         {
             $addFields: {
-                "energy": {
-                    $subtract: ["$lastAE", "$firstAE"],
-                }
+                "energy": { $subtract: ["$lastAE", firstPEAAEOfTheDay != 0 ? firstPEAAEOfTheDay : "$firstAE"] }
+            }
+        },
+        {
+            $addFields: {
+                "hourWithOffset": { $add: [{ $toInt: { $substr: ["$_id", 11, 2] } }, 7] }
             }
         },
         {
             $addFields: {
                 "hour": {
-                    $toInt: { $substr: ["$_id", 11, 2] }
+                    $cond: {
+                        if: { $gte: ["$hourWithOffset", 24] },
+                        then: { $subtract: ["$hourWithOffset", 24] },
+                        else: "$hourWithOffset"
+                    }
                 }
             }
         },
@@ -1125,6 +1342,7 @@ app.get('/energy/all_energy_per_hr/pea/', (req, res) => {
                 else {
                     var completeDocs = docs;
                     var hourInDB = [];
+                    var firstHourInDB = docs.length != 0 ? docs[0].hour : 0;
                     docs.forEach((time) => {
                         hourInDB.push(time.hour);
                     });
@@ -1132,159 +1350,23 @@ app.get('/energy/all_energy_per_hr/pea/', (req, res) => {
                         if (!hourInDB.includes(i)) {
                             var tempDateObj = new Date(today);
                             tempDateObj.setHours(tempDateObj.getHours() + i);
-                            var tempDate = tempDateObj.toISOString();
-                            var doc = { _id: tempDate, energy: 0, hour: i };
+                            var tempDateISOString = tempDateObj.toISOString();
+                            var tempDate = new Date(tempDateISOString);
+                            var doc = {};
+                            if (i > firstHourInDB) {
+                                doc = { _id: tempDate, energy: completeDocs[i - 1].energy, hour: i };
+                            } else {
+                                doc = { _id: tempDate, energy: 0, hour: i };
+                            }
                             completeDocs.push(doc);
+                            completeDocs.sort(compareHr);
                         }
                     }
-                    completeDocs.sort(compareHr);
                     res.send(completeDocs);
                 }
             });
         }
     );
-});
-
-// Don't use in this phase.
-app.get('/controllers_amount/', (req, res) => {
-    var previous7day = new Date()
-    previous7day.setDate(previous7day.getDate() - 7);
-
-    var sentData = [];
-    var offlineDevicesList = []
-
-    var aggregate =
-        [
-            {
-                "$match": {
-                    "createdAt": {
-                        $gte: new Date(previous7day),
-                        $lt: new Date(tomorrow),
-                    }
-                }
-            },
-            {
-                "$match": {
-                    "status": DEVICE_OFFLINE
-                }
-            },
-            {
-                "$group": {
-                    "_id": {
-                        $dateTrunc: {
-                            date: "$createdAt",
-                            unit: "day",
-                            binSize: 1
-                        }
-                    },
-                    "devicesName": {
-                        "$addToSet": "$deviceName"
-                    }
-                }
-            },
-
-        ]
-
-    MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
-        function (err, db) {
-            if (err) throw err;
-            var dbo = db.db(databaseName);
-            dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
-                docs.forEach(async (day) => {
-                    await day.devicesName.forEach((device) => {
-                        if (!offlineDevicesList.includes(device)) {
-                            offlineDevicesList.push(device);
-                        }
-                    })
-                    sentData.push({ date: day._id, offlineDevices: offlineDevicesList.length, onlineDevices: systemDevices.length - offlineDevicesList.length });
-                    offlineDevicesList = [];
-                })
-                // console.log(sentData);
-                res.send(sentData);
-            });
-        }
-    );
-});
-
-/* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ API Server set up ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
-
-var systemDevices = [];
-var isRealDevice = false;
-
-var dateObj = new Date();
-var today = dateObj.toISOString();
-today = today.substring(0, 10);
-
-var dateOfTomorrow = new Date();
-dateOfTomorrow.setDate(dateOfTomorrow.getDate() + 1);
-var tomorrow = dateOfTomorrow.toISOString();
-tomorrow = tomorrow.substring(0, 10);
-
-var dateOfYesterday = new Date();
-dateOfYesterday.setDate(dateOfYesterday.getDate() - 1);
-var yesterday = dateOfYesterday.toISOString();
-yesterday = yesterday.substring(0, 10);
-
-var databaseName = 'energy-monitoring';
-var allDevicesCollection = 'all';
-
-const ON_PEAK_COST_PER_UNIT = 4.1839;
-const OFF_PEAK_COST_PER_UNIT = 2.6037;
-
-const SUNDAY = 0;
-const MONDAY = 1;
-const TUESDAY = 2;
-const WEDNESDAY = 3;
-const THURSDAY = 4;
-const FRIDAY = 5;
-const SATURDAY = 6;
-
-
-var setIsRealDevices = (isReal) => {
-    isRealDevice = isReal;
-}
-
-var getSystemDevices = async () => {
-    try {
-        var response = !isRealDevice ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                            <devices>
-                                <id>MDB1</id>
-                                <id>MDB2</id>
-                                <id>MDB4</id>
-                                <id>MDB5</id>
-                                <id>Solar1</id>
-                                <id>Solar2</id>
-                                <id>Solar3</id>
-                            </devices>`:
-            await axios.get(GET_DEVICES_PATH);
-        xml2js.parseString(!isRealDevice ? response : response.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-            if (systemDevices !== []) {
-                json.devices.id.forEach((device) => {
-                    if ((device.startsWith("MDB") && !device.endsWith("Care")) || device.startsWith("B1") || device.startsWith("Solar")) {
-                        systemDevices.push(device);
-                        console.log(`${device} is added to systemDevices list.`);
-                    }
-                });
-            }
-        });
-    } catch (error) {
-        console.error(error);
-    }
-}
-
-var client;
-
-app.listen(port, async () => {
-    setIsRealDevices(true);
-    getSystemDevices();
-    client = await MongoClient.connect(mongoUrl);
-    console.log('Fetch device from:' + GET_DEVICES_PATH);
-    console.log(`Energy Monitoring API is listening on port ${port}.`);
 });
 
 /* ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ Web Socket ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ */
@@ -2094,9 +2176,9 @@ var offlineDevices = async () => {
 var onPeakToday = async () => {
     var todayOnPeak = 0;
     var onPeakStartTime = new Date(today);
-    onPeakStartTime.setHours(onPeakStartTime.getHours() + 2);
+    onPeakStartTime.setHours(onPeakStartTime.getHours() + 9); // 9.00 A.M.
     var onPeakEndTime = new Date(today);
-    onPeakEndTime.setHours(onPeakEndTime.getHours() + 15);
+    onPeakEndTime.setHours(onPeakEndTime.getHours() + 22); // 10.00 P.M.
 
     var aggregate = [
         {
@@ -2157,7 +2239,7 @@ var offPeakToday = async () => {
     var offPeakEndTime = new Date();
 
     if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
-        offPeakStartTime.setHours(offPeakStartTime.getHours() + 15);
+        offPeakStartTime.setHours(offPeakStartTime.getHours() + 22); // 10.00 P.M.
         offPeakEndTime = new Date();
     } else {
         offPeakStartTime = new Date(today);
