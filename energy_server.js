@@ -97,18 +97,18 @@ var getSystemDevices = async () => {
                             </devices>`:
             await axios.get(GET_DEVICES_PATH);
         xml2js.parseString(!isRealDevice ? response : response.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-            if (systemDevices !== []) {
-                json.devices.id.forEach((device) => {
-                    if ((device.startsWith("MDB") && !device.endsWith("Care")) || device.startsWith("B1") || device.startsWith("Solar")) {
-                        systemDevices.push(device);
-                        console.log(`${device} is added to systemDevices list.`);
-                    }
-                });
+            if (err) throw err;
+            if (result !== undefined) {
+                const jsonString = JSON.stringify(result, null, 4);
+                var json = JSON.parse(jsonString);
+                if (systemDevices !== []) {
+                    json.devices.id.forEach((device) => {
+                        if ((device.startsWith("MDB") && !device.endsWith("Care")) || device.startsWith("B1") || device.startsWith("Solar")) {
+                            systemDevices.push(device);
+                            console.log(`${device} is added to systemDevices list.`);
+                        }
+                    });
+                }
             }
         });
     } catch (error) {
@@ -426,21 +426,21 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
                                     </values>` : await axios.get(getVariableValue(deviceId))
 
     xml2js.parseString(!isRealDevice ? dataFromPowerStudio : dataFromPowerStudio.data, (err, result) => {
-        if (err) {
-            throw err;
-        }
-        const jsonString = JSON.stringify(result, null, 4);
-        var json = JSON.parse(jsonString);
-        var cleansingJSON = cleansingData(json, deviceId)
-
-        const date = new Date().toISOString()
-        const createdAt = new Date(date);
-        cleansingJSON = { ...cleansingJSON, createdAt };
-        if (systemDevices.includes(deviceId) && (deviceId != 'CoPro1' || deviceId != 'CoPro2')) {
-            insertObjToDatabase(cleansingJSON);
-            res.send(json);
-        } else {
-            res.status(400).send(`Not has this devices in the system.`);
+        if (err) throw err;
+        if (result !== undefined) {
+            const jsonString = JSON.stringify(result, null, 4);
+            var json = JSON.parse(jsonString);
+            var cleansingJSON = cleansingData(json, deviceId)
+            
+            const date = new Date().toISOString()
+            const createdAt = new Date(date);
+            cleansingJSON = { ...cleansingJSON, createdAt };
+            if (systemDevices.includes(deviceId) && (deviceId != 'CoPro1' || deviceId != 'CoPro2')) {
+                insertObjToDatabase(cleansingJSON);
+                res.send(json);
+            } else {
+                res.status(400).send(`Not has this devices in the system.`);
+            }
         }
     });
 });
@@ -691,7 +691,7 @@ app.get('/power/apis_per_hr/', (req, res) => {
                             tempDateObj.setHours(tempDateObj.getHours() + i);
                             var tempDateISOString = tempDateObj.toISOString();
                             var tempDate = new Date(tempDateISOString);
-                            var doc = { _id: tempDate, power: 0, hour: i };
+                            var doc = { _id: tempDate, power: date === 'today' ? null : 0, hour: i };
                             completeDocs.push(doc);
                         }
                     }
@@ -1022,7 +1022,7 @@ app.get('/energy/', async (req, res) => {
                             tempDateObj.setHours(tempDateObj.getHours() + i);
                             var tempDateISOString = tempDateObj.toISOString();
                             var tempDate = new Date(tempDateISOString);
-                            var doc = { _id: tempDate, energy: 0, hour: i };
+                            var doc = { _id: tempDate, energy: date === 'today' ? null : 0, hour: i };
                             completeDocs.push(doc);
                         }
                     }
@@ -1047,15 +1047,24 @@ app.get('/energy/all', async (req, res) => {
     }
 
     var allDevicesInEachHourToResponse = [];
+    var thisMoment = new Date();
+    var thisMomentHour = thisMoment.getHours();
+
+    if (thisMomentHour >= 24) thisMomentHour -= 24;
 
     for (var i = 0; i < 24; i++) {
         var allEnergy = 0;
         var _id;
+
         for (var eachDeviceEnergyInEachHour of allDevicesEnergyInEachHour) {
             _id = eachDeviceEnergyInEachHour[i]._id;
             allEnergy += eachDeviceEnergyInEachHour[i].energy;
         }
-        allDevicesInEachHourToResponse.push({ _id: _id, energy: allEnergy, hour: i });
+        if (i > thisMomentHour) {
+            allDevicesInEachHourToResponse.push({ _id: _id, energy: null, hour: i });
+        } else {
+            allDevicesInEachHourToResponse.push({ _id: _id, energy: allEnergy, hour: i });
+        }
     }
 
     res.send(allDevicesInEachHourToResponse);
@@ -1407,6 +1416,7 @@ app.get('/com_devices/devices_status_amount/history', (req, res) => {
             if (err) throw err;
             var dbo = db.db(databaseName);
             dbo.collection(allDevicesCollection).aggregate(aggregate).toArray().then((docs) => {
+                console.log(docs);
                 if (docs.length === 0) {
                     for (var i = 0; i < 7; i++) {
                         var tempDate = new Date();
@@ -1420,8 +1430,10 @@ app.get('/com_devices/devices_status_amount/history', (req, res) => {
                 }
                 else {
                     var dateFromAggregate = [];
+                    // console.log(docs);
+                    // console.log(docs[0]._id.toISOString());
                     docs.forEach((doc) => {
-                        var date = parseInt(doc._id.substring(8, 10));
+                        var date = parseInt(doc._id.toISOString().substring(8, 10));
                         dateFromAggregate.push(date);
                     });
                     for (var i = 0; i < 7; i++) {
@@ -1430,12 +1442,18 @@ app.get('/com_devices/devices_status_amount/history', (req, res) => {
                         var tempDateWithoutOffset = tempDate.toISOString();
                         tempDateWithoutOffset = tempDateWithoutOffset.substring(0, 10);
                         var tempDate = new Date(tempDateWithoutOffset);
-                        var calculatingDate = tempDateWithoutOffset.substring(8, 10);
+                        var calculatingDate = parseInt(tempDateWithoutOffset.substring(8, 10));
+
+                        console.log('dateFromAggregate =', dateFromAggregate);
+                        console.log('calculatingDate =', calculatingDate);
 
                         if (!dateFromAggregate.includes(calculatingDate)) {
+                            console.log(`calculatingDate (${calculatingDate}) is doesn't in`, dateFromAggregate);
                             sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: 0, onlineDevices: systemDevices.length });
                         } else {
-                            var foundItem = docs.find(item => parseInt(item._id.substring(8, 10)) == parseInt(calculatingDate));
+                            console.log(`calculatingDate (${calculatingDate}) is in`, dateFromAggregate);
+                            var foundItem = docs.find(item => parseInt(item._id.toISOString().substring(8, 10)) == parseInt(calculatingDate));
+                            console.log('foundItem =', foundItem);
                             var offlineDevices = foundItem.devicesName.length;
                             sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: offlineDevices, onlineDevices: systemDevices.length - offlineDevices });
                         }
@@ -2043,16 +2061,16 @@ var onlineDevices = async () => {
                                                         </variable>
                                                     </values>` : await axios.get(getVariableValue(device));
         xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-            var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
-
-            if (deviceStatus !== NaN) {
-                if (deviceStatus === DEVICE_ONLINE) {
-                    onlineDevices++;
+            if (err) throw err;
+            if (result !== undefined) {
+                const jsonString = JSON.stringify(result, null, 4);
+                var json = JSON.parse(jsonString);
+                var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
+                
+                if (deviceStatus !== NaN) {
+                    if (deviceStatus === DEVICE_ONLINE) {
+                        onlineDevices++;
+                    }
                 }
             }
         });
@@ -2239,16 +2257,16 @@ var offlineDevices = async () => {
                                                     </variable>
                                                 </values>` : await axios.get(getVariableValue(device));
         xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-            var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
-
-            if (deviceStatus !== NaN) {
-                if (deviceStatus === DEVICE_OFFLINE) {
-                    offlineDevices++;
+            if (err) throw err;
+            if (result !== undefined) {
+                const jsonString = JSON.stringify(result, null, 4);
+                var json = JSON.parse(jsonString);
+                var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
+                
+                if (deviceStatus !== NaN) {
+                    if (deviceStatus === DEVICE_OFFLINE) {
+                        offlineDevices++;
+                    }
                 }
             }
         });
@@ -2540,19 +2558,19 @@ var getAlarmEvent = async () => {
                             </values>`:
             await axios.get(GET_ALARM_POINT);
         xml2js.parseString(!isRealDevice ? alarmPoint : alarmPoint.data, (err, result) => {
-            if (err) {
-                throw err;
-            }
-            const jsonString = JSON.stringify(result, null, 4);
-            var json = JSON.parse(jsonString);
-
-            var humidity = json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`) !== undefined ?
+            if (err) throw err;
+            if (result !== undefined) {
+                const jsonString = JSON.stringify(result, null, 4);
+                var json = JSON.parse(jsonString);
+                
+                var humidity = json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`) !== undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`).value[0]) : 0;
-            var temperature = json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`) !== undefined ?
+                var temperature = json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`) !== undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`).value[0]) : 0;
-            var smokeStatus = json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`) !== undefined ?
+                var smokeStatus = json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`) !== undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`).value[0]) === 0 ? 'Normal' : 'Alarm' : 'Normal';
-            alarmEvents = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
+                alarmEvents = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
+            }
         });
     } catch (error) {
         console.error(error);
