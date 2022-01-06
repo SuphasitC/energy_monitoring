@@ -1430,8 +1430,6 @@ app.get('/com_devices/devices_status_amount/history', (req, res) => {
                 }
                 else {
                     var dateFromAggregate = [];
-                    // console.log(docs);
-                    // console.log(docs[0]._id.toISOString());
                     docs.forEach((doc) => {
                         var date = parseInt(doc._id.toISOString().substring(8, 10));
                         dateFromAggregate.push(date);
@@ -1444,16 +1442,10 @@ app.get('/com_devices/devices_status_amount/history', (req, res) => {
                         var tempDate = new Date(tempDateWithoutOffset);
                         var calculatingDate = parseInt(tempDateWithoutOffset.substring(8, 10));
 
-                        console.log('dateFromAggregate =', dateFromAggregate);
-                        console.log('calculatingDate =', calculatingDate);
-
                         if (!dateFromAggregate.includes(calculatingDate)) {
-                            console.log(`calculatingDate (${calculatingDate}) is doesn't in`, dateFromAggregate);
                             sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: 0, onlineDevices: systemDevices.length });
                         } else {
-                            console.log(`calculatingDate (${calculatingDate}) is in`, dateFromAggregate);
                             var foundItem = docs.find(item => parseInt(item._id.toISOString().substring(8, 10)) == parseInt(calculatingDate));
-                            console.log('foundItem =', foundItem);
                             var offlineDevices = foundItem.devicesName.length;
                             sentData.push({ date: tempDate, dateSequence: i + 1, offlineDevices: offlineDevices, onlineDevices: systemDevices.length - offlineDevices });
                         }
