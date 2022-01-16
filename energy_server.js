@@ -1041,9 +1041,9 @@ app.get('/energy/all', async (req, res) => {
         var allSolarEnergyResponse = await axios.get(`http://127.0.0.1:${port}/energy/all_energy_per_hr/solar/all`);
         allDevicesEnergyInEachHour.push(allPEAEnergyResponse.data);
         allDevicesEnergyInEachHour.push(allSolarEnergyResponse.data);
-
     } catch (error) {
         console.error(error);
+        res.send('Error');
     }
 
     var allDevicesInEachHourToResponse = [];
@@ -1081,6 +1081,7 @@ app.get('/energy/all_energy_per_hr/solar/all', async (req, res) => {
         }
     } catch (error) {
         console.error(error);
+        res.send('Error');
     }
 
     var solarAllEnergyInEachHour = [];
@@ -1235,6 +1236,7 @@ app.get('/energy/all_energy_per_hr/pea/all', async (req, res) => {
         }
     } catch (error) {
         console.error(error);
+        res.send('Error');
     }
 
     var peaAllEnergyInEachHour = [];
