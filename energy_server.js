@@ -98,10 +98,10 @@ var getSystemDevices = async () => {
             await axios.get(GET_DEVICES_PATH);
         xml2js.parseString(!isRealDevice ? response : response.data, (err, result) => {
             if (err) throw err;
-            if (result !== undefined) {
+            if (result != undefined) {
                 const jsonString = JSON.stringify(result, null, 4);
                 var json = JSON.parse(jsonString);
-                if (systemDevices !== []) {
+                if (systemDevices != []) {
                     json.devices.id.forEach((device) => {
                         if ((device.startsWith("MDB") && !device.endsWith("Care")) || device.startsWith("B1") || device.startsWith("Solar")) {
                             systemDevices.push(device);
@@ -133,7 +133,7 @@ app.listen(port, async () => {
 
 var insertObjToDatabase = (obj) => {
     // Insert for split solar and meter
-    if (obj.deviceName !== null) {
+    if (obj.deviceName != null) {
         MongoClient.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true },
             function (err, db) {
                 if (err) throw err;
@@ -184,53 +184,53 @@ var insertData = async () => {
 }
 
 var cleansingData = (json, device) => {
-    var deviceName = json.values.variable.find((element) => element.id[0] == `${device}.NAME`) !== undefined ?
+    var deviceName = json.values.variable.find((element) => element.id[0] == `${device}.NAME`) != undefined ?
         json.values.variable.find((element) => element.id[0] == `${device}.NAME`).textValue[0] : null;
-    var ae = json.values.variable.find((element) => element.id[0] == `${device}.AE`) !== undefined ?
+    var ae = json.values.variable.find((element) => element.id[0] == `${device}.AE`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AE`).value[0]) : null;
-    var ai1 = json.values.variable.find((element) => element.id[0] == `${device}.AI1`) !== undefined ?
+    var ai1 = json.values.variable.find((element) => element.id[0] == `${device}.AI1`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AI1`).value[0]) : null;
-    var ai2 = json.values.variable.find((element) => element.id[0] == `${device}.AI2`) !== undefined ?
+    var ai2 = json.values.variable.find((element) => element.id[0] == `${device}.AI2`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AI2`).value[0]) : null;
-    var ai3 = json.values.variable.find((element) => element.id[0] == `${device}.AI3`) !== undefined ?
+    var ai3 = json.values.variable.find((element) => element.id[0] == `${device}.AI3`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AI3`).value[0]) : null;
-    var ain = json.values.variable.find((element) => element.id[0] == `${device}.AIN`) !== undefined ?
+    var ain = json.values.variable.find((element) => element.id[0] == `${device}.AIN`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.AIN`).value[0]) : null;
-    var apis = json.values.variable.find((element) => element.id[0] == `${device}.APIS`) !== undefined ?
+    var apis = json.values.variable.find((element) => element.id[0] == `${device}.APIS`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.APIS`).value[0]) : null;
-    var appis = json.values.variable.find((element) => element.id[0] == `${device}.APPIS`) !== undefined ?
+    var appis = json.values.variable.find((element) => element.id[0] == `${device}.APPIS`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.APPIS`).value[0]) : null;
-    var fre = json.values.variable.find((element) => element.id[0] == `${device}.FRE`) !== undefined ?
+    var fre = json.values.variable.find((element) => element.id[0] == `${device}.FRE`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.FRE`).value[0]) : null;
-    var pfis = json.values.variable.find((element) => element.id[0] == `${device}.PFIS`) !== undefined ?
+    var pfis = json.values.variable.find((element) => element.id[0] == `${device}.PFIS`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.PFIS`).value[0]) : null;
-    var rpis = json.values.variable.find((element) => element.id[0] == `${device}.RPIS`) !== undefined ?
+    var rpis = json.values.variable.find((element) => element.id[0] == `${device}.RPIS`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.RPIS`).value[0]) : null;
-    var status = json.values.variable.find((element) => element.id[0] == `${device}.STATUS`) !== undefined ?
+    var status = json.values.variable.find((element) => element.id[0] == `${device}.STATUS`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]) : null;
-    var thdi1 = json.values.variable.find((element) => element.id[0] == `${device}.THDI1`) !== undefined ?
+    var thdi1 = json.values.variable.find((element) => element.id[0] == `${device}.THDI1`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI1`).value[0]) : null;
-    var thdi2 = json.values.variable.find((element) => element.id[0] == `${device}.THDI2`) !== undefined ?
+    var thdi2 = json.values.variable.find((element) => element.id[0] == `${device}.THDI2`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI2`).value[0]) : null;
-    var thdi3 = json.values.variable.find((element) => element.id[0] == `${device}.THDI3`) !== undefined ?
+    var thdi3 = json.values.variable.find((element) => element.id[0] == `${device}.THDI3`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDI3`).value[0]) : null;
-    var thdv1 = json.values.variable.find((element) => element.id[0] == `${device}.THDV1`) !== undefined ?
+    var thdv1 = json.values.variable.find((element) => element.id[0] == `${device}.THDV1`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV1`).value[0]) : null;
-    var thdv2 = json.values.variable.find((element) => element.id[0] == `${device}.THDV2`) !== undefined ?
+    var thdv2 = json.values.variable.find((element) => element.id[0] == `${device}.THDV2`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV2`).value[0]) : null;
-    var thdv3 = json.values.variable.find((element) => element.id[0] == `${device}.THDV3`) !== undefined ?
+    var thdv3 = json.values.variable.find((element) => element.id[0] == `${device}.THDV3`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.THDV3`).value[0]) : null;
-    var vi1 = json.values.variable.find((element) => element.id[0] == `${device}.VI1`) !== undefined ?
+    var vi1 = json.values.variable.find((element) => element.id[0] == `${device}.VI1`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI1`).value[0]) : null;
-    var vi12 = json.values.variable.find((element) => element.id[0] == `${device}.VI12`) !== undefined ?
+    var vi12 = json.values.variable.find((element) => element.id[0] == `${device}.VI12`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI12`).value[0]) : null;
-    var vi2 = json.values.variable.find((element) => element.id[0] == `${device}.VI2`) !== undefined ?
+    var vi2 = json.values.variable.find((element) => element.id[0] == `${device}.VI2`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI2`).value[0]) : null;
-    var vi23 = json.values.variable.find((element) => element.id[0] == `${device}.VI23`) !== undefined ?
+    var vi23 = json.values.variable.find((element) => element.id[0] == `${device}.VI23`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI23`).value[0]) : null;
-    var vi3 = json.values.variable.find((element) => element.id[0] == `${device}.VI3`) !== undefined ?
+    var vi3 = json.values.variable.find((element) => element.id[0] == `${device}.VI3`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI3`).value[0]) : null;
-    var vi31 = json.values.variable.find((element) => element.id[0] == `${device}.VI31`) !== undefined ?
+    var vi31 = json.values.variable.find((element) => element.id[0] == `${device}.VI31`) != undefined ?
         parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.VI31`).value[0]) : null;
 
     var cleanData = {
@@ -427,7 +427,7 @@ app.post('/devices/:deviceId', cors(), async (req, res) => {
 
     xml2js.parseString(!isRealDevice ? dataFromPowerStudio : dataFromPowerStudio.data, (err, result) => {
         if (err) throw err;
-        if (result !== undefined) {
+        if (result != undefined) {
             const jsonString = JSON.stringify(result, null, 4);
             var json = JSON.parse(jsonString);
             var cleansingJSON = cleansingData(json, deviceId)
@@ -1126,7 +1126,7 @@ app.get('/energy/all_energy_per_hr/solar/', async (req, res) => {
     const minSolarAEDocument = await collection.aggregate(firstSolarAEOfTheDayAggregate).toArray();
     var firstSolarAEOfTheDay = 0;
 
-    if (minSolarAEDocument.length !== 0) {
+    if (minSolarAEDocument.length != 0) {
         firstSolarAEOfTheDay = minSolarAEDocument[0].ae;
     }
 
@@ -1281,7 +1281,7 @@ app.get('/energy/all_energy_per_hr/pea/', async (req, res) => {
     const minPEAAEDocument = await collection.aggregate(firstPEAAEOfTheDayAggregate).toArray();
     var firstPEAAEOfTheDay = 0;
 
-    if (minPEAAEDocument.length !== 0) {
+    if (minPEAAEDocument.length != 0) {
         firstPEAAEOfTheDay = minPEAAEDocument[0].ae;
     }
 
@@ -2056,12 +2056,12 @@ var onlineDevices = async () => {
                                                     </values>` : await axios.get(getVariableValue(device));
         xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
             if (err) throw err;
-            if (result !== undefined) {
+            if (result != undefined) {
                 const jsonString = JSON.stringify(result, null, 4);
                 var json = JSON.parse(jsonString);
                 var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
                 
-                if (deviceStatus !== NaN) {
+                if (deviceStatus != NaN) {
                     if (deviceStatus === DEVICE_ONLINE) {
                         onlineDevices++;
                     }
@@ -2252,12 +2252,12 @@ var offlineDevices = async () => {
                                                 </values>` : await axios.get(getVariableValue(device));
         xml2js.parseString(!isRealDevice ? dataFromAPI : dataFromAPI.data, (err, result) => {
             if (err) throw err;
-            if (result !== undefined) {
+            if (result != undefined) {
                 const jsonString = JSON.stringify(result, null, 4);
                 var json = JSON.parse(jsonString);
                 var deviceStatus = parseFloat(json.values.variable.find((element) => element.id[0] == `${device}.STATUS`).value[0]);
                 
-                if (deviceStatus !== NaN) {
+                if (deviceStatus != NaN) {
                     if (deviceStatus === DEVICE_OFFLINE) {
                         offlineDevices++;
                     }
@@ -2314,7 +2314,7 @@ var onPeakToday = async () => {
         },
     ];
 
-    if (onPeakStartTime.getDay() !== SATURDAY && onPeakStartTime.getDay() !== SUNDAY) {
+    if (onPeakStartTime.getDay() != SATURDAY && onPeakStartTime.getDay() != SUNDAY) {
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
@@ -2334,7 +2334,7 @@ var offPeakToday = async () => {
     var offPeakStartTime = new Date(today);
     var offPeakEndTime = new Date();
 
-    if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
+    if (offPeakStartTime.getDay() != SATURDAY && offPeakStartTime.getDay() != SUNDAY) {
         offPeakStartTime.setHours(offPeakStartTime.getHours() + 22); // 10.00 P.M.
         offPeakEndTime = new Date();
     } else {
@@ -2436,7 +2436,7 @@ var onPeakYesterday = async () => {
         },
     ];
 
-    if (onPeakStartTime.getDay() !== SATURDAY && onPeakStartTime.getDay() !== SUNDAY) {
+    if (onPeakStartTime.getDay() != SATURDAY && onPeakStartTime.getDay() != SUNDAY) {
         var db = client.db(databaseName);
         const collection = db.collection('all');
         const result = await collection.aggregate(aggregate).toArray();
@@ -2456,7 +2456,7 @@ var offPeakYesterday = async () => {
     var offPeakStartTime = new Date(yesterday);
     var offPeakEndTime = new Date(today);
 
-    if (offPeakStartTime.getDay() !== SATURDAY && offPeakStartTime.getDay() !== SUNDAY) {
+    if (offPeakStartTime.getDay() != SATURDAY && offPeakStartTime.getDay() != SUNDAY) {
         offPeakStartTime.setHours(offPeakStartTime.getHours() + 15);
         offPeakEndTime.setHours(offPeakEndTime.getHours() + 2);
     } else {
@@ -2553,15 +2553,15 @@ var getAlarmEvent = async () => {
             await axios.get(GET_ALARM_POINT);
         xml2js.parseString(!isRealDevice ? alarmPoint : alarmPoint.data, (err, result) => {
             if (err) throw err;
-            if (result !== undefined) {
+            if (result != undefined) {
                 const jsonString = JSON.stringify(result, null, 4);
                 var json = JSON.parse(jsonString);
                 
-                var humidity = json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`) !== undefined ?
+                var humidity = json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`) != undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.HUM`).value[0]) : 0;
-                var temperature = json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`) !== undefined ?
+                var temperature = json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`) != undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Temp`).value[0]) : 0;
-                var smokeStatus = json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`) !== undefined ?
+                var smokeStatus = json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`) != undefined ?
                 parseFloat(json.values.variable.find((element) => element.id[0] == `CoPro2.Smoke`).value[0]) === 0 ? 'Normal' : 'Alarm' : 'Normal';
                 alarmEvents = { humidity: humidity, temperature: temperature, smokeStatus: smokeStatus };
             }
